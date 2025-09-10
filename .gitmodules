@@ -1,0 +1,4 @@
+[submodule "deps/contour-tree"]
+	path = deps/contour-tree
+	url = https://github.com/SantriptaSharma/contour-tree.git
+	branch = llvis
