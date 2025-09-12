@@ -1,0 +1,1 @@
+All scripts written to be executed from basedir
