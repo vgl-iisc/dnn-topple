@@ -1,5 +1,4 @@
 """
-compute_knn_graph.py
 Script to compute the k-nearest neighbors graph from a set of high-dim data points.
 
 Usage:
