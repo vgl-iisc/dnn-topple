@@ -1,2 +1,11 @@
 # vscode config
 .vscode
+
+# python module artifacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+
+*_backup
