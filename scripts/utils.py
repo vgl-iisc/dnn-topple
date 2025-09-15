@@ -34,12 +34,10 @@ def get_adjlist_from_graph(G: nx.Graph):
         The adjacency list representation of the graph.
     """
 
-    adjlist = []
+    adjlist = [[] for _ in range(G.number_of_nodes())]
 
-    for _, nbr_dict in G.adjacency():
-        adj = []
-        
-        adj.append(list(nbr_dict.keys()))
-        adjlist.append(adj)
+    for node, nbr_dict in G.adjacency():
+        adj = list(map(int, nbr_dict.keys()))
+        adjlist[node] = adj
 
     return adjlist
