@@ -52,7 +52,7 @@ def main():
                 mid = l + (r - l) // 2
                 G = compute_knn_graph(data, n_neighbors=mid)
 
-                name = f"adj_{tensor_file[len("vectors"):-4]}_{mid}"
+                name = f"adj_{tensor_file[len("vectors_"):-4]}_{mid}"
 
                 if nx.is_connected(G):
                     r = mid
