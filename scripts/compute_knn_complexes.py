@@ -3,7 +3,7 @@ Goes through all (penultimate) landscapes in the data directory and computes
 (minimally connected) k-NN graphs for each of them, saving them appropriately.
 """
 
-from compute_knn_graph import compute_knn_graph
+from knn_graph import compute_knn_graph
 
 import os
 
@@ -26,8 +26,6 @@ def main():
             continue
 
         tensor_files = [f for f in files if f.startswith("vectors_") and f.endswith(".txt")]
-
-        split = root.split(os.sep)[-1]
 
         for tensor_file in tensor_files:
             tensor_path = os.path.join(root, tensor_file)

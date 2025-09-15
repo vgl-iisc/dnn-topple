@@ -1,1 +1,1 @@
-All scripts written to be executed from basedir
+All scripts written to be executed from basedir. They all assume the file structure seen in this repo.

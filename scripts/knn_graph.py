@@ -2,7 +2,7 @@
 Script to compute the k-nearest neighbors graph from a set of high-dim data points.
 
 Usage:
-python compute_knn_graph.py <tensors_file.txt> <n_neighbours> <output_file>
+python knn_graph.py <tensors_file.txt> <n_neighbours> <output_file>
 
 Saves the graph in networkx adjacency list format to the specified output file.
 
@@ -38,7 +38,7 @@ def compute_knn_graph(data: np.ndarray, n_neighbors=5) -> nx.Graph:
 
 def main():
     if len(argv) != 4:
-        print("Usage: python compute_knn_graph.py <tensors_file.txt> <n_neighbours> <output_file>")
+        print("Usage: python knn_graph.py <tensors_file.txt> <n_neighbours> <output_file>")
         return
 
     data_file = argv[1]

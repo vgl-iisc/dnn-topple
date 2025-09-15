@@ -13,8 +13,6 @@ import pyct as ct
 from sys import argv
 import os
 
-import pickle
-
 from utils import get_adjlist_from_graph
 
 def compute_contour_tree(G: nx.Graph, scalar_function: np.ndarray):
@@ -30,8 +28,7 @@ def compute_contour_tree(G: nx.Graph, scalar_function: np.ndarray):
 
     # Create a GraphScalarFunction object
     gsf = ct.GraphScalarFunction()
-    gsf.initialize(G.number_of_nodes())
-
+    
     gsf.loadGraphFromAdjList(get_adjlist_from_graph(G))
     gsf.updateFnValues(list(scalar_function))
 
@@ -43,12 +40,45 @@ def compute_contour_tree(G: nx.Graph, scalar_function: np.ndarray):
 
     return tree
 
+def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output_directory: str):
+
+    os.makedirs(output_directory, exist_ok=True)
+
+    # Load the graph
+    G = nx.read_adjlist(adjlist_file, nodetype=int)
+    print(f"Loaded graph with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
+
+    filename = os.path.basename(adjlist_file)
+    name, _ = os.path.splitext(filename)
+    name = name.replace("adj_", "ctree_").replace("_connected", "")
+
+    # Load the scalar function
+    scalar_function = np.loadtxt(scalar_fn_file)
+    print(f"Loaded scalar function with {len(scalar_function)} values.")
+
+    if len(scalar_function) != G.number_of_nodes():
+        raise ValueError("The length of the scalar function must match the number of nodes in the graph.")
+
+    # Compute the contour tree
+    contour_tree = compute_contour_tree(G, scalar_function)
+    print("Computed contour tree.")
+
+    contour_tree.output(os.path.join(output_directory, f"{name}"), ct.TreeType.TypeContourTree)
+    
+    print(f"Saved contour tree to {output_directory}.")
+
 def main():
     if len(argv) != 4:
         print("Usage: python compute_ctree.py <adjlist_file.txt> <scalar_function_file.txt> <output_directory>")
         return
     
+    adjlist_file = argv[1]
+    scalar_fn_file = argv[2]
+    output_directory = argv[3]
+    
+    compute_and_save_contour_tree(adjlist_file, scalar_fn_file, output_directory)    
     
 
 if __name__ == "__main__":
+    input()
     main()
