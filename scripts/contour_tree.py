@@ -63,9 +63,28 @@ def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output
     contour_tree = compute_contour_tree(G, scalar_function)
     print("Computed contour tree.")
 
-    contour_tree.output(os.path.join(output_directory, f"{name}"), ct.TreeType.TypeContourTree)
+    outfile = os.path.join(output_directory, f"{name}")
+    contour_tree.output(outfile, ct.TreeType.TypeContourTree)
     
     print(f"Saved contour tree to {output_directory}.")
+    print(f"Computing hierarchical simplification.")
+
+    ctdata = ct.ContourTreeData()
+    
+    try:
+        ctdata.loadBinFile(outfile)
+
+        sim = ct.SimplifyCT()
+        sim.setInput(ctdata)
+
+        sim_fn = ct.Persistence(ctdata)
+
+        sim.simplify(sim_fn)
+        sim.outputOrder(outfile, False)
+    except Exception as e:
+        print(f"Error during simplification: {e}")
+
+    print(f"Saved simplification order to {output_directory}.")
 
 def main():
     if len(argv) != 4:
