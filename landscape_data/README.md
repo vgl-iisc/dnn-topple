@@ -31,6 +31,11 @@ Each of the files is plaintext, with each line containing the relevant data for 
 For example, each line of a loss file contains a single value, whereas each line of a vectors file contains as many values as the layer's embedding dimension.
 As such, there are exactly as many lines as there are datapoints in the split.
 
+A collated `preds.csv` file may also be present, with the columns:
+`Epoch_No,Split,Image_Index,Image_Function_value,Original_Label,Predicted_Label,Correct`
+
+Where `Correct` is either `TRUE` or `FALSE`.
+
 ### Replicability
 - Every (model, dataset) pairs should correspond to a training run in `training/`, and every dataset (download URL) + split should be documented in `datasets/`
 - The datasets should be shuffled with a fixed seed, which should also be documented in `datasets/`
