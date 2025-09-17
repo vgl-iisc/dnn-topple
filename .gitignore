@@ -9,3 +9,6 @@ __pycache__
 *.pdb
 
 *_backup
+
+# temporary output text files
+out*.txt
