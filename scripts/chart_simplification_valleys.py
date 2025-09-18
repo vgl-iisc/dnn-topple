@@ -9,6 +9,8 @@ from glob import glob
 from sys import argv, stderr
 import os
 
+from tqdm import tqdm
+
 import pyct as ct
 import numpy as np
 import matplotlib.pyplot as plt
@@ -28,29 +30,54 @@ def process_chart(root: str, tree_name: str, ct_dir: str, charts_dir: str):
     data = ct.ContourTreeData()
     data.loadBinFile(os.path.join(root, tree_name))
     
-    thresh = load_simplification_thresholds_from_tree(os.path.join(root, tree_name)) 
+    outpath = os.path.join(root.replace(ct_dir, charts_dir), f"{tree_name}_features_simpl.png")
+
+    print(f"Processing chart for {tree_name}...")
+    if os.path.exists(outpath):
+        print(f"Chart already exists, skipping: {outpath}")
+        return
+
+    os.makedirs(os.path.dirname(outpath), exist_ok=True)
+
+    thresh = load_simplification_thresholds_from_tree(os.path.join(root, tree_name))
+
+    thresh = np.linspace(0, np.max(thresh), num=500)
 
     features = [load_features(os.path.join(root, tree_name), t)[0] for t in thresh]
+    print(f"Using {len(thresh)} simplification thresholds")
+    print(f"Loaded features for all thresholds for {outpath}: {sum([len(f) for f in features])} features")
 
     # map-filter to only minima-saddle arcs
-    for i, _ in enumerate(thresh):
+    for i, _ in tqdm(enumerate(thresh), total=len(thresh), desc="Filtering to minima-saddle arcs"):
         features[i] = [f for f in features[i] if data.type[data.nodeMap[f.frm]] == ct.MINIMUM]
 
     num_features = [len(ft) for ft in features]
-    print(num_features, file=stderr)
 
-    os.makedirs(os.path.join(root.replace(ct_dir, charts_dir)), exist_ok=True)
+    print(f"Making chart for {outpath}")
 
-    fig, ax = plt.subplots()
+    fig, (ax_top, ax_bot) = plt.subplots(2, 1, sharex=True, gridspec_kw={'height_ratios': [1, 1]})
+    fig.subplots_adjust(hspace=0.025)
     
-    ax.set_ylim(0.0, 20)
-    ax.plot(thresh, num_features)
+    ax_bot.plot(thresh, num_features)
+    ax_top.plot(thresh, num_features)
 
-    ax.set_xlabel("Simplification Threshold")
-    ax.set_ylabel("#Min-Saddle Arcs")
-    ax.set_title(f"{tree_name}")
+    med = np.mean(num_features)
+    max = np.max(num_features)
+
+    ax_bot.set_ylim(0, med * 2.5)
+    ax_top.set_ylim(max * 0.75, max * 1.25)
+
+    ax_top.spines.bottom.set_visible(False)
+    ax_bot.spines.top.set_visible(False)
+    ax_top.xaxis.tick_top()
+    ax_top.tick_params(labeltop=False)
+    ax_bot.xaxis.tick_bottom()
+
+    ax_bot.set_xlabel("Simplification Threshold")
+    ax_bot.set_ylabel("#Min-Saddle Arcs")
+    ax_top.set_title(f"{tree_name}")
     fig.tight_layout()
-    plt.savefig(os.path.join(root.replace(ct_dir, charts_dir), f"{tree_name}_features_simpl.png"))
+    plt.savefig(outpath)
     plt.close(fig)
 
 def main():
