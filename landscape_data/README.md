@@ -10,13 +10,11 @@ This directory should have a subdirectory for every target (model, dataset), wit
 |   |   |   |   ...
 |   |   <split2>
 |   |   ...
-|   Penultimate_Tensors
+|   Tensors
 |   |   <split1>
 |   |   |   vectors_<underscore-separated tags>.txt
 |   |   |   ...
 |   |   ...
-|   <n-k>_Tensors
-|   |   Same structure as Penultimate_Tensors, but stores vectors from previous layers
 |   Predictions
 |   |   <split1>
 |   |   |   predictions_<underscore-separated tags>.txt
@@ -25,14 +23,14 @@ This directory should have a subdirectory for every target (model, dataset), wit
 |   <Model>_<underscore-separated tags>.pth (model weights)
 ```
 
-Tags typically store epoch information (`e{i}`, `best`, or `last`) etc.
+Tags: `a{layer_index_from_back}_e{epoch_no}`. For instance, if the activations are coming from the penultimate layer, `a{1}`, if they're from the layer before that `a{2}` etc. It works like negative indexing.
 
 Each of the files is plaintext, with each line containing the relevant data for one datapoint, space-separated.
 For example, each line of a loss file contains a single value, whereas each line of a vectors file contains as many values as the layer's embedding dimension.
 As such, there are exactly as many lines as there are datapoints in the split.
 
 A collated `preds.csv` file may also be present, with the columns:
-`Epoch_No,Split,Image_Index,Image_Function_value,Original_Label,Predicted_Label,Correct`
+`Epoch_No,Layer,Split,Image_Index,Image_Function_value,Original_Label,Predicted_Label,Correct`
 
 Where `Correct` is either `TRUE` or `FALSE`.
 

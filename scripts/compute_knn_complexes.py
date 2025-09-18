@@ -1,5 +1,5 @@
 """
-Goes through all (penultimate) landscapes in the data directory and computes
+Goes through all landscapes in the data directory and computes
 (minimally connected) k-NN graphs for each of them, saving them appropriately.
 """
 
@@ -22,7 +22,7 @@ def main():
     max_k = int(argv[3])
 
     for root, dirs, files in os.walk(data_dir):
-        if not "Penultimate_Tensors" in root:
+        if not "Tensors" in root:
             continue
 
         tensor_files = [f for f in files if f.startswith("vectors_") and f.endswith(".txt")]
@@ -37,7 +37,7 @@ def main():
             l = 1
             r = max_k
 
-            save_basepath = root.replace(data_dir, complexes_dir).replace(f"{os.sep}Penultimate_Tensors", f"")
+            save_basepath = root.replace(data_dir, complexes_dir).replace(f"Tensors{os.sep}", f"")
             os.makedirs(save_basepath, exist_ok=True)
 
             Gmax = compute_knn_graph(data, n_neighbors=max_k)
