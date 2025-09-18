@@ -41,3 +41,15 @@ def get_adjlist_from_graph(G: nx.Graph):
         adjlist[node] = adj
 
     return adjlist
+
+def load_simplification_thresholds_from_tree(tree_files: str) -> list[float]:
+    with open(f"{tree_files}.order.dat", "r") as f:
+        no_simpl = int(f.readline().strip())
+
+    thresh = [float(f) for f in np.fromfile(f"{tree_files}.order.bin", dtype=np.float32, offset=4*no_simpl, count=no_simpl)]
+
+    # add no simplification (0.0) and deduplicate
+    thresh_set = set([0.0] + thresh)
+    thresh = sorted(list(thresh_set))
+
+    return thresh

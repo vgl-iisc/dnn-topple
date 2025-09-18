@@ -13,6 +13,8 @@ import pyct as ct
 import numpy as np
 import matplotlib.pyplot as plt
 
+from utils import load_simplification_thresholds_from_tree
+
 def load_features(tree_name: str, threshold: float):
     topo = ct.TopologicalFeatures()
     topo.loadData(tree_name)
@@ -25,18 +27,8 @@ def load_features(tree_name: str, threshold: float):
 def process_chart(root: str, tree_name: str, ct_dir: str, charts_dir: str):
     data = ct.ContourTreeData()
     data.loadBinFile(os.path.join(root, tree_name))
-
-    with open(os.path.join(root, f"{tree_name}.order.dat"), "r") as f:
-        no_simpl = int(f.readline().strip())
-
-    with open(os.path.join(root, f"{tree_name}.order.bin"), "rb") as f:
-        f.read(4 * no_simpl) # skip the order array
-        thresh = [float.fromhex(f.read(4).hex()) for _ in range(no_simpl)]
-
-    # add no simplification (0.0) and deduplicate
-    thresh_set = set([0.0] + thresh)
-    thresh = sorted(list(thresh_set))
-    thresh = np.linspace(0.0, 3.0, 500)
+    
+    thresh = load_simplification_thresholds_from_tree(os.path.join(root, tree_name)) 
 
     features = [load_features(os.path.join(root, tree_name), t)[0] for t in thresh]
 
