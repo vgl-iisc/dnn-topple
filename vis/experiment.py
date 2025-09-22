@@ -32,7 +32,7 @@ class LossLandscapeExperiment:
         self.model_data = f"{self.model}_{self.dataset.name}"
 
     def __repr__(self) -> str:
-        return f"Experiment on {self.dataset.name} using {self.model} with k={self.k}, activations from layer={self.layer}, training epoch={self.epoch}"
+        return f"{self.dataset.name} with {self.model}, k={self.k}, layer={self.layer}, epoch={self.epoch}"
     
     def get_paths(self, data_dir, ct_dir) -> dict:
         return {
