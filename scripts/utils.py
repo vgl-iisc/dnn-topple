@@ -42,14 +42,12 @@ def get_adjlist_from_graph(G: nx.Graph):
 
     return adjlist
 
-def load_simplification_thresholds_from_tree(tree_files: str) -> list[float]:
+def load_order_and_wts(tree_files: str) -> tuple[list[int], list[float]]:
     with open(f"{tree_files}.order.dat", "r") as f:
         no_simpl = int(f.readline().strip())
+        
+    with open(f"{tree_files}.order.bin", "rb") as file:
+        order = [int(f) for f in np.fromfile(file, dtype=np.uint32, count=no_simpl)]
+        wts = [float(f) for f in np.fromfile(file, dtype=np.float32, count=no_simpl)]
 
-    thresh = [float(f) for f in np.fromfile(f"{tree_files}.order.bin", dtype=np.float32, offset=4*no_simpl, count=no_simpl)]
-
-    # add no simplification (0.0) and deduplicate
-    thresh_set = set([0.0] + thresh)
-    thresh = sorted(list(thresh_set))
-
-    return thresh
+    return order, wts

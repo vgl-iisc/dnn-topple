@@ -15,7 +15,7 @@ import pyct as ct
 import numpy as np
 import matplotlib.pyplot as plt
 
-from utils import load_simplification_thresholds_from_tree
+from utils import load_order_and_wts
 
 def load_features(tree_name: str, threshold: float):
     topo = ct.TopologicalFeatures()
@@ -39,33 +39,44 @@ def process_chart(root: str, tree_name: str, ct_dir: str, charts_dir: str):
 
     os.makedirs(os.path.dirname(outpath), exist_ok=True)
 
-    thresh = load_simplification_thresholds_from_tree(os.path.join(root, tree_name))
+    simpl = ct.SimplifyCT()
+    simpl.setInput(data)
 
-    thresh = np.linspace(0, np.max(thresh), num=500)
-
-    features = [load_features(os.path.join(root, tree_name), t)[0] for t in thresh]
-    print(f"Using {len(thresh)} simplification thresholds")
-    print(f"Loaded features for all thresholds for {outpath}: {sum([len(f) for f in features])} features")
-
-    # map-filter to only minima-saddle arcs
-    for i, _ in tqdm(enumerate(thresh), total=len(thresh), desc="Filtering to minima-saddle arcs"):
-        features[i] = [f for f in features[i] if data.type[data.nodeMap[f.frm]] == ct.MINIMUM]
-
-    num_features = [len(ft) for ft in features]
+    order, wts = load_order_and_wts(os.path.join(root, tree_name))
+    type = ord(ct.MINIMUM)
+    fns, num_min, _ = simpl.getSimplificationPlot(order, wts, type)
 
     print(f"Making chart for {outpath}")
 
+    med = np.median(num_min)
+    max = np.max(num_min)
+    
+    topline = med * 2
+
+    split_chart = max > topline
+
+    if not split_chart:
+        
+        fig, ax = plt.subplots()
+        ax.plot(fns, num_min)
+        ax.set_xlabel("Simplification Threshold")
+        ax.set_ylabel("#Min-Saddle Arcs")
+        ax.set_title(f"{tree_name}")
+        fig.tight_layout()
+        plt.savefig(outpath)
+        plt.close(fig)    
+        
+        return
+    
+    
     fig, (ax_top, ax_bot) = plt.subplots(2, 1, sharex=True, gridspec_kw={'height_ratios': [1, 1]})
     fig.subplots_adjust(hspace=0.025)
     
-    ax_bot.plot(thresh, num_features)
-    ax_top.plot(thresh, num_features)
+    ax_bot.plot(fns, num_min)
+    ax_top.plot(fns, num_min)
 
-    med = np.mean(num_features)
-    max = np.max(num_features)
-
-    ax_bot.set_ylim(0, med * 2.5)
-    ax_top.set_ylim(max * 0.75, max * 1.25)
+    ax_bot.set_ylim(0, topline)
+    ax_top.set_ylim(max * 0.9, max * 1.1)
 
     ax_top.spines.bottom.set_visible(False)
     ax_bot.spines.top.set_visible(False)
