@@ -25,11 +25,21 @@ def load_features(tree_name: str, threshold: float):
 
     return features
     
-
-def process_chart(root: str, tree_name: str, ct_dir: str, charts_dir: str):
+def get_valley_vs_thresh(tree_path: str):
     data = ct.ContourTreeData()
-    data.loadBinFile(os.path.join(root, tree_name))
-    
+    data.loadBinFile(tree_path)
+
+    simpl = ct.SimplifyCT()
+    simpl.setInput(data)
+
+    order, wts = load_order_and_wts(tree_path)
+
+    type = ord(ct.MINIMUM)
+    fns, num_min, _ = simpl.getSimplificationPlot(order, wts, type)
+
+    return fns, num_min
+
+def process_chart(root: str, tree_name: str, ct_dir: str, charts_dir: str):    
     outpath = os.path.join(root.replace(ct_dir, charts_dir), f"{tree_name}_features_simpl.png")
 
     print(f"Processing chart for {tree_name}...")
@@ -39,12 +49,7 @@ def process_chart(root: str, tree_name: str, ct_dir: str, charts_dir: str):
 
     os.makedirs(os.path.dirname(outpath), exist_ok=True)
 
-    simpl = ct.SimplifyCT()
-    simpl.setInput(data)
-
-    order, wts = load_order_and_wts(os.path.join(root, tree_name))
-    type = ord(ct.MINIMUM)
-    fns, num_min, _ = simpl.getSimplificationPlot(order, wts, type)
+    fns, num_min = get_valley_vs_thresh(os.path.join(root, f"{tree_name}.ctree.bin"))
 
     print(f"Making chart for {outpath}")
 
