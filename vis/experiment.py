@@ -13,6 +13,14 @@ class Dataset:
 
     def get_split_path(self, split: str) -> str:
         return os.path.join(self.path, f"{split}.csv")
+    
+    def get_split_labels(self, split: str) -> list[int]:
+        split_path = self.get_split_path(split)
+        with open(split_path, 'r') as f:
+            lines = f.readlines()[1:]  # Skip header
+            labels = [int(line.strip().split(",")[-1]) for line in lines]
+        
+        return labels
 
 # class Model:
 #     def __init__(self, name: str) -> None:
