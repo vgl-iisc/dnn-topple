@@ -8,20 +8,30 @@ class Dataset:
         self.classes_path = classes_path
         self.splits = splits
         
+        self.size_by_split = {split: 0 for split in splits}
+                
         with open(classes_path, 'r') as f:
             self.classes = f.readline().split(",")
-
+            
+        self.labels_by_split = {split: [] for split in splits}
+        self.class_size_by_split = {split: {clss: 0 for clss in self.classes} for split in splits}
+        self.largest_class_size_by_split = {split: 0 for split in splits}
+        
+        for split in splits:
+            split_path = self.get_split_path(split)
+            with open(split_path, 'r') as f:
+                lines = f.readlines()[1:]  # Skip header
+                self.size_by_split[split] = len(lines)
+                for line in lines:
+                    label = int(line.strip().split(",")[-1])
+                    self.labels_by_split[split].append(label)
+                    self.class_size_by_split[split][self.classes[label]] += 1
+                    
+                    self.largest_class_size_by_split[split] = max(self.largest_class_size_by_split[split], self.class_size_by_split[split][self.classes[label]])
+                    
     def get_split_path(self, split: str) -> str:
         return os.path.join(self.path, f"{split}.csv")
     
-    def get_split_labels(self, split: str) -> list[int]:
-        split_path = self.get_split_path(split)
-        with open(split_path, 'r') as f:
-            lines = f.readlines()[1:]  # Skip header
-            labels = [int(line.strip().split(",")[-1]) for line in lines]
-        
-        return labels
-
 # class Model:
 #     def __init__(self, name: str) -> None:
 #         self.name = name

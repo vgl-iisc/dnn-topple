@@ -55,10 +55,16 @@ TYPE_STRING = {
     ct.MAXIMUM: "maxima"
 }
 
+def get_class_coverage(exp: LossLandscapeExperiment, count: int, class_idx: int) -> float:
+    ds = exp.dataset
+    total = ds.class_size_by_split[exp.split][ds.classes[class_idx]]
+    
+    return round(count / total if total > 0 else 0.0, 4)
 class RichFeature:
     def __init__(self, id: int, feature: ct.Feature, data: ct.ContourTreeData):
         self.id = id
-        
+                
+        # confirmed correct, not going through nodeMap throws IndexError
         self.frm = data.nodeMap[feature.frm]
         self.to = data.nodeMap[feature.to]
         
@@ -67,7 +73,7 @@ class RichFeature:
         
         self.type_frm = data.type[self.frm]
         self.type_to = data.type[self.to]
-        
+                
         self.type_string = TYPE_STRING[self.type_frm] + "-" + TYPE_STRING[self.type_to]
         
         assert self.fn_to >= self.fn_frm
@@ -75,16 +81,14 @@ class RichFeature:
         self.pers = self.fn_to - self.fn_frm
         
         self.arcs = set(feature.arcs)
+        
+        # initialized later
         self.members = set()
-        
-        for arc_id in feature.arcs:
-            arc = data.arcs[arc_id]
-            assert arc.id == arc_id
-            
-            self.members.add(arc.frm)
-            self.members.add(arc.to)
-        
-        self.size = len(self.members)
+        self.size = 0
+        self.class_counts: dict[int, int] = {}
+        self.class_coverage: dict[int, float] = {}
+        self.majority_class = -1
+        self.major_class_size = 0
         
 
 def compute_arc_features(exp: LossLandscapeExperiment, simpl: float):
@@ -107,34 +111,54 @@ def make_arc_map(features: list[RichFeature]):
     
     return arc_map
 
-def compute_feature_map(exp: LossLandscapeExperiment, features: list[RichFeature]) -> tuple[list[int], dict[RichFeature, set[int]]]:
+def compute_feature_map(exp: LossLandscapeExperiment, features: list[RichFeature]) -> list[int]:
     """
-    Computing a mapping from contour tree node (i.e. an embedded vector for a data point) to the contour tree feature it belongs to and vice versa.
+    Computes a mapping from contour tree node (i.e. an embedded vector for a data point) to the contour tree feature it belongs to and vice versa.
+    Also populates rich data in the feature objects.
     """
     
     ctree_path = exp.get_paths(st.session_state.landscapes_dir, st.session_state.ct_dir)["ctree"]
-    dataset_path = exp.dataset.get_split_path(exp.split)
     
-    with open(dataset_path, "r") as f:
-        count = len(pd.read_csv(f))
+    labels = exp.dataset.labels_by_split[exp.split]
+    count = len(labels)
     
     with open(f"{ctree_path}.part.raw", "rb") as f:
         parts = np.fromfile(f, dtype=np.uint32, count=count)
         
     arc_map = make_arc_map(features)
 
-    node2feat = [-1] * count
-    feat2nodes = {f: set() for f in features}
-    
+    point2feat = [-1] * count
+        
     for i, arc_id in enumerate(parts):
         assert arc_id in arc_map, "Arc not found in feature map!"
         
-        node2feat[i] = arc_map[arc_id]
-        feat2nodes[arc_map[arc_id]].add(i)
+        feat = arc_map[arc_id]
+        point2feat[i] = arc_map[arc_id]
         
-    assert set.union(*feat2nodes.values()) == set(range(count)), "Some nodes are not mapped to any feature!"
+        feat.members.add(i)
+        feat.size += 1
         
-    return node2feat, feat2nodes
+        label = labels[i]
+        
+        if label not in feat.class_counts:
+            feat.class_counts[label] = 0
+        feat.class_counts[label] += 1
+        
+        if label == feat.majority_class:
+            feat.major_class_size += 1
+        elif feat.major_class_size > 0:
+            feat.major_class_size -= 1
+        else:
+            feat.majority_class = label
+            feat.major_class_size = 1
+        
+    assert set.union(*[feat.members for feat in features]) == set(range(count)), "Some nodes are not mapped to any feature!"
+        
+    for feat in features:
+        for i in range(len(exp.dataset.classes)):
+            feat.class_coverage[i] = get_class_coverage(exp, feat.class_counts.get(i, 0), i)
+
+    return point2feat
 
 def class2color(idx: int) -> str:
     colors = [

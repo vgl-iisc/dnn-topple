@@ -43,14 +43,13 @@ def compute_arcs_and_coverage(exp: LossLandscapeExperiment, simpl: float):
     with st.spinner(f"Computing arcs and coverage at simplification {simpl}..."):
         feats = compute_arc_features(exp, simpl)
         st.session_state[f"feats_{repr(exp)}"] = feats
-        node2feat, feat2nodes = compute_feature_map(exp, feats)
+        node2feat = compute_feature_map(exp, feats)
         st.session_state[f"node2feat_{repr(exp)}"] = node2feat
-        st.session_state[f"feat2nodes_{repr(exp)}"] = feat2nodes
         
 
 def render_experiment(exp: LossLandscapeExperiment, half_width: bool):
 
-    with st.expander("Steady State Finder", expanded=True):
+    with st.expander("Steady State Finder", expanded=False):
         state_tol = st.slider("Steady Simplification State Coverage Threshold", min_value=0.0, max_value=100.0, value=5.0, step=0.1, key=f"tol_slider_{repr(exp)}", format="%0.1f%%",
                                 help="Minimum proportion of the range of thresholds for which the number of minima should remain constant for a simplification to be considered steady.")
         steady_thresh, steady_minima = get_steady_simplification_states(exp, state_tol / 100.0)
@@ -138,7 +137,7 @@ def main():
             second = st.session_state.selected_experiments[i+1] if i+1 < len(st.session_state.selected_experiments) else None
 
             title_text = f"{repr(first)}" if second is None else f"{repr(first)} **||** {repr(second)}"
-            with st.expander(title_text):
+            with st.expander(title_text, expanded=True):
                 if second is None:
                     with st.container():
                         render_experiment(first, half_width=False)
@@ -150,7 +149,7 @@ def main():
                         render_experiment(second, half_width=True)
     else:
         for exp in st.session_state.selected_experiments:
-            with st.expander(repr(exp)):
+            with st.expander(repr(exp), expanded=True):
                 render_experiment(exp, half_width=False)
 
 
