@@ -60,6 +60,7 @@ def get_class_coverage(exp: LossLandscapeExperiment, count: int, class_idx: int)
     total = ds.class_size_by_split[exp.split][ds.classes[class_idx]]
     
     return round(count / total if total > 0 else 0.0, 4)
+
 class RichFeature:
     def __init__(self, id: int, feature: ct.Feature, data: ct.ContourTreeData):
         self.id = id
@@ -82,13 +83,20 @@ class RichFeature:
         
         self.arcs = set(feature.arcs)
         
-        # initialized later
+        # initialized later in compute_feature_map
         self.members = set()
         self.size = 0
         self.class_counts: dict[int, int] = {}
         self.class_coverage: dict[int, float] = {}
         self.majority_class = -1
         self.major_class_size = 0
+        
+        # initialized later in compute_feature_coverage_data
+        self.pred_class_counts: dict[int, int] = {}
+        self.confusion: dict[tuple[int, int], int] = {}
+        self.pred_correct: int = 0
+        self.pred_incorrect: int = 0 # INV = self.size - self.pred_correct
+        self.pred_accuracy: float = 0.0
         
 
 def compute_arc_features(exp: LossLandscapeExperiment, simpl: float):
@@ -144,13 +152,13 @@ def compute_feature_map(exp: LossLandscapeExperiment, features: list[RichFeature
             feat.class_counts[label] = 0
         feat.class_counts[label] += 1
         
-        if label == feat.majority_class:
-            feat.major_class_size += 1
-        elif feat.major_class_size > 0:
-            feat.major_class_size -= 1
-        else:
-            feat.majority_class = label
-            feat.major_class_size = 1
+
+    for feat in features:
+        if len(feat.class_counts) == 0:
+            continue
+        
+        feat.majority_class = max(list(feat.class_counts.keys()), key=lambda k: feat.class_counts[k])
+        feat.major_class_size = feat.class_counts[feat.majority_class]
         
     assert set.union(*[feat.members for feat in features]) == set(range(count)), "Some nodes are not mapped to any feature!"
         
@@ -159,6 +167,37 @@ def compute_feature_map(exp: LossLandscapeExperiment, features: list[RichFeature
             feat.class_coverage[i] = get_class_coverage(exp, feat.class_counts.get(i, 0), i)
 
     return point2feat
+
+def load_preds(exp: LossLandscapeExperiment) -> list[int]:
+    pred_path = exp.get_paths(st.session_state.landscapes_dir, st.session_state.ct_dir)["predictions"]
+    
+    with open(pred_path, "rb") as f:
+        preds = np.loadtxt(f, dtype=np.int32).reshape(-1)
+    
+    return preds.tolist()
+
+def compute_feature_coverage_data(exp: LossLandscapeExperiment, features: list[RichFeature], preds: list[int]):
+    """
+    Computes per-feature coverage data, incorporating model predictions.
+    """
+
+    labels = exp.dataset.labels_by_split[exp.split]
+    
+    for feat in features:
+        for dp in feat.members:
+            true_label = labels[dp]
+            pred_label = preds[dp]
+            
+            feat.pred_class_counts[pred_label] = feat.pred_class_counts.get(pred_label, 0) + 1
+            feat.confusion[(true_label, pred_label)] = feat.confusion.get((true_label, pred_label), 0) + 1
+            
+            if true_label == pred_label:
+                feat.pred_correct += 1
+            else:
+                feat.pred_incorrect += 1
+                
+        feat.pred_accuracy = feat.pred_correct / feat.size if feat.size > 0 else 0.0
+
 
 def class2color(idx: int) -> str:
     colors = [
@@ -181,4 +220,3 @@ def class2color(idx: int) -> str:
     ]
     
     return colors[idx % len(colors)]
-

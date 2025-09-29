@@ -20,7 +20,7 @@ import altair as alt
 import numpy as np
 
 from experiment import Dataset, LossLandscapeExperiment, find_all_datasets, find_all_experiments
-from vis_utils import find_steady_simplification_states, compute_arc_features, compute_feature_map, RichFeature
+from vis_utils import find_steady_simplification_states, compute_arc_features, compute_feature_map, load_preds, compute_feature_coverage_data
 from components import render_arc_explorer, render_coverage_map
 
 path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts')))
@@ -45,6 +45,9 @@ def compute_arcs_and_coverage(exp: LossLandscapeExperiment, simpl: float):
         st.session_state[f"feats_{repr(exp)}"] = feats
         node2feat = compute_feature_map(exp, feats)
         st.session_state[f"node2feat_{repr(exp)}"] = node2feat
+        preds = load_preds(exp)
+        st.session_state[f"preds_{repr(exp)}"] = preds
+        compute_feature_coverage_data(exp, feats, preds)
         
 
 def render_experiment(exp: LossLandscapeExperiment, half_width: bool):
