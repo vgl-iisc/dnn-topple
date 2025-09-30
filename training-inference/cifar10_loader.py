@@ -19,11 +19,42 @@ import numpy as np
 
 try:
     from torchvision.datasets import CIFAR10
+    import torchvision.transforms as T
 except Exception:
     CIFAR10 = None
+    T = None
 
 
 SEED = 1759209098
+
+
+# CIFAR transforms (moved here from the model loader)
+CIFAR10_MEAN = (0.4914, 0.4822, 0.4465)
+CIFAR10_STD = (0.2470, 0.2435, 0.2616)
+
+
+def get_cifar10_transforms(image_size: int = 32) -> Tuple[object, object]:
+    """Return (train_transform, test_transform) for CIFAR-10 as torchvision transforms.
+
+    Transforms are designed to accept torch.Tensor inputs (C,H,W). If torchvision
+    is not available this will raise.
+    """
+    if T is None:
+        raise RuntimeError('torchvision.transforms not available; cannot build transforms')
+
+    train_transform = T.Compose([
+        T.RandomCrop(32, padding=4),
+        T.RandomHorizontalFlip(),
+        T.ToTensor(),
+        T.Normalize(CIFAR10_MEAN, CIFAR10_STD),
+    ])
+
+    test_transform = T.Compose([
+        T.ToTensor(),
+        T.Normalize(CIFAR10_MEAN, CIFAR10_STD),
+    ])
+
+    return train_transform, test_transform
 
 
 class Cifar10Dataset(Dataset):
@@ -34,7 +65,7 @@ class Cifar10Dataset(Dataset):
     label_tensor is a long (int64) scalar.
     """
 
-    def __init__(self, root: str, train: bool = True, transform: Optional[Callable] = None):
+    def __init__(self, root: str, train: bool = True, transform: Optional[Callable] = None, permute: bool = True):
         if CIFAR10 is None:
             raise RuntimeError('torchvision is required for Cifar10Dataset')
 
@@ -49,13 +80,15 @@ class Cifar10Dataset(Dataset):
         # Deterministic permutation (fixed seed) so DataLoader(shuffle=False) yields reproducible order
         torch.random.manual_seed(SEED)
         self.perm = torch.randperm(len(self.labels))
+        
+        if not permute:
+            self.perm = torch.arange(len(self.labels))
 
     def __len__(self) -> int:
         return int(self.labels.shape[0])
 
     def __getitem__(self, idx: int):
         idx = int(self.perm[idx].item())
-
         img = self.images[idx].astype(np.float32) / 255.0  # (H, W, C) in [0,1]
         # convert to channel-first (C, H, W)
         img = np.transpose(img, (2, 0, 1)).copy()
@@ -64,7 +97,8 @@ class Cifar10Dataset(Dataset):
             tensor_img = self.transform(tensor_img)
         label = int(self.labels[idx])
         tensor_label = torch.tensor(label, dtype=torch.long)
-        return tensor_img, tensor_label
+        # return a dict so original (shuffled) index can be retrieved for mapping
+        return {"image": tensor_img, "label": tensor_label, "index": idx}
 
 
 def make_cifar10_dataloaders(
@@ -96,12 +130,15 @@ def output_split_csv(train_loader, test_loader, output_dir):
     def save_loader_to_csv(loader, filename):
         split = filename.split('.')[0]
         all_data = []
-        i = 0
-        for _, labels in loader:
-            for label in labels:
-                row = [split, i, label.item()]
+        for batch in loader:
+            # support batch as dict or tuple
+            labels = batch['label']
+            indices = batch['index']
+            
+            for j, label in enumerate(labels):
+                orig_idx = int(indices[j]) 
+                row = [split, orig_idx, int(label.item())]
                 all_data.append(row)
-                i += 1
         df = pd.DataFrame(all_data, columns=["Split", "Image_Index", "Original_Label"])
         df.to_csv(os.path.join(output_dir, filename), header=True, index=False)
 
@@ -110,17 +147,22 @@ def output_split_csv(train_loader, test_loader, output_dir):
 
     def save_loaders_to_csv(train_loader, test_loader, output_file):
         all_data = []
-        i = 0
-        for _, labels in train_loader:
-            for label in labels:
-                row = ['train', i, label.item()]
-                i += 1
-                all_data.append(row)
-        for _, labels in test_loader:
-            for label in labels:
-                row = ['test', i, label.item()]
-                i += 1
-                all_data.append(row)
+        for batch in train_loader:
+            labels = batch['label']
+            indices = batch['index']
+            
+            for j, label in enumerate(labels):
+                orig_idx = int(indices[j])
+                all_data.append(['train', orig_idx, int(label.item())])
+            
+        for batch in test_loader:
+            labels = batch['label']
+            indices = batch['index']
+            
+            for j, label in enumerate(labels):
+                orig_idx = int(indices[j])
+                all_data.append(['test', orig_idx, int(label.item())])
+        
         df = pd.DataFrame(all_data, columns=["Split", "Image_Index", "Original_Label"])
         df.to_csv(output_file, header=True, index=False)
 

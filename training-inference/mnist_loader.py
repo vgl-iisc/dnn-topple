@@ -19,6 +19,10 @@ from typing import Optional, Tuple, Callable
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
+try:
+    import torchvision.transforms as T
+except Exception:
+    T = None
 
 
 def read_images_labels(images_filepath: str, labels_filepath: str) -> Tuple[np.ndarray, np.ndarray]:
@@ -52,6 +56,25 @@ def read_images_labels(images_filepath: str, labels_filepath: str) -> Tuple[np.n
 
 SEED = 1759143479
 
+
+def get_mnist_transforms() -> Tuple[object, object]:
+    """Return (train_transform, test_transform) for MNIST as torchvision transforms.
+
+    These transforms assume input is a torch.Tensor with shape (1,H,W).
+    """
+    if T is None:
+        raise RuntimeError('torchvision.transforms not available; cannot build MNIST transforms')
+    train_transform = T.Compose([
+        T.RandomHorizontalFlip(),
+        T.ToTensor(),
+        T.Normalize((0.1307,), (0.3081,)),
+    ])
+    test_transform = T.Compose([
+        T.ToTensor(),
+        T.Normalize((0.1307,), (0.3081,)),
+    ])
+    return train_transform, test_transform
+
 class MnistDataset(Dataset):
     """PyTorch Dataset for raw MNIST IDX files.
 
@@ -60,19 +83,20 @@ class MnistDataset(Dataset):
     label_tensor is a long (int64) scalar.
     """
 
-    def __init__(self, images_filepath: str, labels_filepath: str, transform: Optional[Callable] = None):
+    def __init__(self, images_filepath: str, labels_filepath: str, transform: Optional[Callable] = None, permute: bool = True):
         self.images, self.labels = read_images_labels(images_filepath, labels_filepath)
         self.transform = transform
-        
-        torch.random.manual_seed(SEED) 
+
+        torch.random.manual_seed(SEED)
         self.perm = torch.randperm(len(self.labels))
+        if not permute:
+            self.perm = torch.arange(len(self.labels))
 
     def __len__(self) -> int:
         return int(self.labels.shape[0])
 
     def __getitem__(self, idx: int):
         idx = int(self.perm[idx].item())
-        
         img = self.images[idx].astype(np.float32) / 255.0  # normalize to [0,1]
         # add channel dim
         img = np.expand_dims(img, 0)  # (1, 28, 28)
@@ -81,7 +105,8 @@ class MnistDataset(Dataset):
             tensor_img = self.transform(tensor_img)
         label = int(self.labels[idx])
         tensor_label = torch.tensor(label, dtype=torch.long)
-        return tensor_img, tensor_label
+        # return dict so caller can map back to original (shuffled) index
+        return {"image": tensor_img, "label": tensor_label, "index": idx}
 
 
 def make_mnist_dataloaders(
@@ -126,14 +151,13 @@ def output_split_csv(train_loader, test_loader, output_dir):
 
     def save_loader_to_csv(loader, filename):
         split = filename.split('.')[0]
-        
         all_data = []
-        i = 0
-        for _, labels in loader:
-            for label in labels:
-                row = [split, i, label.item()]
-                all_data.append(row)
-                i += 1
+        for batch in loader:
+            labels = batch['label']
+            indices = batch['index']
+            for j, label in enumerate(labels):
+                orig_idx = int(indices[j])
+                all_data.append([split, orig_idx, int(label.item())])
         df = pd.DataFrame(all_data, columns=["Split", "Image_Index", "Original_Label"])
         df.to_csv(os.path.join(output_dir, filename), header=True, index=False)
 
@@ -142,17 +166,18 @@ def output_split_csv(train_loader, test_loader, output_dir):
 
     def save_loaders_to_csv(train_loader, test_loader, output_file):
         all_data = []
-        i = 0
-        for _, labels in train_loader:
-            for label in labels:
-                row = ['train', i, label.item()]
-                i += 1   
-                all_data.append(row)
-        for _, labels in test_loader:
-            for label in labels:
-                row = ['test', i, label.item()]
-                i += 1
-                all_data.append(row)
+        for batch in train_loader:
+            labels = batch['label']
+            indices = batch['index']
+            for j, label in enumerate(labels):
+                orig_idx = int(indices[j])
+                all_data.append(['train', orig_idx, int(label.item())])
+        for batch in test_loader:
+            labels = batch['label']
+            indices = batch['index']
+            for j, label in enumerate(labels):
+                orig_idx = int(indices[j])
+                all_data.append(['test', orig_idx, int(label.item())])
         df = pd.DataFrame(all_data, columns=["Split", "Image_Index", "Original_Label"])
         df.to_csv(output_file, header=True, index=False)
     
