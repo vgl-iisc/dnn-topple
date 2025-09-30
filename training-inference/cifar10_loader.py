@@ -17,12 +17,8 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 
-try:
-    from torchvision.datasets import CIFAR10
-    import torchvision.transforms as T
-except Exception:
-    CIFAR10 = None
-    T = None
+from torchvision.datasets import CIFAR10
+import torchvision.transforms as T
 
 
 SEED = 1759209098
@@ -39,8 +35,6 @@ def get_cifar10_transforms(image_size: int = 32) -> Tuple[object, object]:
     Transforms are designed to accept torch.Tensor inputs (C,H,W). If torchvision
     is not available this will raise.
     """
-    if T is None:
-        raise RuntimeError('torchvision.transforms not available; cannot build transforms')
 
     train_transform = T.Compose([
         T.RandomCrop(32, padding=4),
@@ -66,12 +60,8 @@ class Cifar10Dataset(Dataset):
     """
 
     def __init__(self, root: str, train: bool = True, transform: Optional[Callable] = None, permute: bool = True):
-        if CIFAR10 is None:
-            raise RuntimeError('torchvision is required for Cifar10Dataset')
-
         self.cifar = CIFAR10(root=root, train=train, download=False)
 
-        # torchvision.CIFAR10 provides numpy arrays for data and a list for targets
         # data has shape (N, H, W, C)
         self.images = np.asarray(self.cifar.data)
         self.labels = np.asarray(self.cifar.targets, dtype=np.int64)

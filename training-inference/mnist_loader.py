@@ -19,10 +19,7 @@ from typing import Optional, Tuple, Callable
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-try:
-    import torchvision.transforms as T
-except Exception:
-    T = None
+import torchvision.transforms as T
 
 
 def read_images_labels(images_filepath: str, labels_filepath: str) -> Tuple[np.ndarray, np.ndarray]:
@@ -62,8 +59,6 @@ def get_mnist_transforms() -> Tuple[object, object]:
 
     These transforms assume input is a torch.Tensor with shape (1,H,W).
     """
-    if T is None:
-        raise RuntimeError('torchvision.transforms not available; cannot build MNIST transforms')
     train_transform = T.Compose([
         T.RandomHorizontalFlip(),
         T.ToTensor(),
