@@ -20,7 +20,7 @@ This directory should have a subdirectory for every target (model, dataset), wit
 |   |   |   predictions_<underscore-separated tags>.txt
 |   |   |   ...
 |   |   ...
-|   <Model>_<underscore-separated tags>.pth (model weights)
+|   <Model>_<underscore-separated tags>.pt (model weights)
 ```
 
 Tags: `a{layer_index_from_back}_e{epoch_no}`. For instance, if the activations are coming from the penultimate layer, `a{1}`, if they're from the layer before that `a{2}` etc. It works like negative indexing.
@@ -35,6 +35,4 @@ A collated `preds.csv` file may also be present, with the columns:
 Where `Correct` is either `TRUE` or `FALSE`.
 
 ### Replicability
-- Every (model, dataset) pairs should correspond to a training run in `training/`, and every dataset (download URL) + split should be documented in `datasets/`
-- The datasets should be shuffled with a fixed seed, which should also be documented in `datasets/`
-- `training/` should also document mappings from best and last to epoch numbers for each run
+- Every (model, dataset) pair should correspond to a saved model in a `.pt` file, and every dataset (download URL) + split should be documented in `datasets/`
