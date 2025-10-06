@@ -175,6 +175,8 @@ def render_coverage_map(exp: LossLandscapeExperiment):
 
         df = df.groupby(grouping).size().reset_index(name='count').sort_values(by=["count"], ascending=False)
 
+        # TODO: proportion and coverage are improperly set up
+
         df["Proportion"] = df['count'] / len(node2label)
         df["Coverage"] = [get_class_coverage(exp, entry["count"], entry["True Label"]) for _, entry in df.iterrows()]
         

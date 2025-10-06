@@ -1,0 +1,18 @@
+datasets: 
+  cifar10: ./datasets/cifar10/data
+  mnist: ./datasets/mnist/data
+
+do:
+  - densenet_cifar
+  - densenet_mnist
+  - resnet_cifar
+  - resnet_mnist
+  - vgg_cifar
+  - vgg_mnist
+  - wres_cifar
+  - wres_mnist
+
+config:
+  tensorboard_dir: ./training-inference/tensorboard
+  checkpoint_dir: ./training-inference/checkpoints
+  device: cuda

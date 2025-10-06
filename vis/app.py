@@ -67,6 +67,7 @@ def render_experiment(exp: LossLandscapeExperiment, half_width: bool):
         st.dataframe(pd.DataFrame({"Steady Threshold Start": [t[0] for t in steady_thresh], "Steady Threshold End": [t[1] for t in steady_thresh], "Number of Valleys": steady_minima}))
         
     simpl_def = sizes[0][1] if len(sizes) > 0 else max_wt / 2.0
+    # TODO: add manual entry for simplification threshold
     simpl = st.slider("Select Simplification Threshold", min_value=0.0, max_value=max_wt, value=simpl_def, step=0.01, key=f"simpl_slider_{repr(exp)}")
 
     with st.container(horizontal=True, horizontal_alignment="center") as c:

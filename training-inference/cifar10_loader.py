@@ -25,8 +25,8 @@ SEED = 1759209098
 
 
 # CIFAR transforms (moved here from the model loader)
-CIFAR10_MEAN = (0.4914, 0.4822, 0.4465)
-CIFAR10_STD = (0.2470, 0.2435, 0.2616)
+CIFAR10_MEAN = torch.tensor([0.4914, 0.4822, 0.4465])
+CIFAR10_STD = torch.tensor([0.2470, 0.2435, 0.2616])
 
 
 def get_cifar10_transforms(image_size: int = 32) -> Tuple[object, object]:
@@ -37,10 +37,10 @@ def get_cifar10_transforms(image_size: int = 32) -> Tuple[object, object]:
     """
 
     train_transform = T.Compose([
-        T.RandomCrop(32, padding=4),
-        T.RandomHorizontalFlip(),
         T.ToTensor(),
         T.Normalize(CIFAR10_MEAN, CIFAR10_STD),
+        T.RandomCrop(32, padding=4),
+        T.RandomHorizontalFlip(),
     ])
 
     test_transform = T.Compose([
@@ -67,6 +67,9 @@ class Cifar10Dataset(Dataset):
         self.labels = np.asarray(self.cifar.targets, dtype=np.int64)
         self.transform = transform
 
+        if transform is None:
+            self.transform = T.ToTensor()
+
         # Deterministic permutation (fixed seed) so DataLoader(shuffle=False) yields reproducible order
         torch.random.manual_seed(SEED)
         self.perm = torch.randperm(len(self.labels))
@@ -74,17 +77,16 @@ class Cifar10Dataset(Dataset):
         if not permute:
             self.perm = torch.arange(len(self.labels))
 
+        self.num_classes = 10
+
     def __len__(self) -> int:
         return int(self.labels.shape[0])
 
     def __getitem__(self, idx: int):
         idx = int(self.perm[idx].item())
-        img = self.images[idx].astype(np.float32) / 255.0  # (H, W, C) in [0,1]
-        # convert to channel-first (C, H, W)
-        img = np.transpose(img, (2, 0, 1)).copy()
-        tensor_img = torch.from_numpy(img)
-        if self.transform is not None:
-            tensor_img = self.transform(tensor_img)
+        img = self.images[idx]
+        tensor_img = self.transform(img)
+
         label = int(self.labels[idx])
         tensor_label = torch.tensor(label, dtype=torch.long)
         # return a dict so original (shuffled) index can be retrieved for mapping

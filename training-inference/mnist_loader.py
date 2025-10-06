@@ -60,12 +60,14 @@ def get_mnist_transforms() -> Tuple[object, object]:
     These transforms assume input is a torch.Tensor with shape (1,H,W).
     """
     train_transform = T.Compose([
-        T.RandomHorizontalFlip(),
         T.ToTensor(),
+        T.Pad(2),
         T.Normalize((0.1307,), (0.3081,)),
+        T.RandomHorizontalFlip(),
     ])
     test_transform = T.Compose([
         T.ToTensor(),
+        T.Pad(2),
         T.Normalize((0.1307,), (0.3081,)),
     ])
     return train_transform, test_transform
@@ -82,22 +84,25 @@ class MnistDataset(Dataset):
         self.images, self.labels = read_images_labels(images_filepath, labels_filepath)
         self.transform = transform
 
+        if transform is None:
+            self.transform = T.ToTensor()
+
         torch.random.manual_seed(SEED)
         self.perm = torch.randperm(len(self.labels))
         if not permute:
             self.perm = torch.arange(len(self.labels))
+
+        self.num_classes = 10
 
     def __len__(self) -> int:
         return int(self.labels.shape[0])
 
     def __getitem__(self, idx: int):
         idx = int(self.perm[idx].item())
-        img = self.images[idx].astype(np.float32) / 255.0  # normalize to [0,1]
-        # add channel dim
-        img = np.expand_dims(img, 0)  # (1, 28, 28)
-        tensor_img = torch.from_numpy(img)
-        if self.transform is not None:
-            tensor_img = self.transform(tensor_img)
+        img = np.repeat(self.images[idx][:, :, np.newaxis], repeats=3, axis=2)
+
+        tensor_img = self.transform(img)
+
         label = int(self.labels[idx])
         tensor_label = torch.tensor(label, dtype=torch.long)
         # return dict so caller can map back to original (shuffled) index
@@ -105,10 +110,7 @@ class MnistDataset(Dataset):
 
 
 def make_mnist_dataloaders(
-    train_images_filepath: str,
-    train_labels_filepath: str,
-    test_images_filepath: str,
-    test_labels_filepath: str,
+    data_root: str,
     batch_size: int = 64,
     transform: Optional[Callable] = None,
     shuffle: bool = False,
@@ -116,7 +118,11 @@ def make_mnist_dataloaders(
     """Create train and test DataLoaders for MNIST IDX files.
 
     Args:
-        train_images_filepath, train_labels_filepath, test_*: paths to IDX files
+        data_root: path to MNIST base directory containing the 4 files:
+            train-images-idx3-ubyte
+            train-labels-idx1-ubyte
+            t10k-images-idx3-ubyte
+            t10k-labels-idx1-ubyte
         batch_size: batch size for the DataLoaders
         shuffle: whether to shuffle the training DataLoader
         num_workers: number of worker processes for data loading
@@ -126,6 +132,12 @@ def make_mnist_dataloaders(
     Returns:
         (train_loader, test_loader)
     """
+
+    train_images_filepath = join(data_root, "train-images.idx3-ubyte")
+    train_labels_filepath = join(data_root, "train-labels.idx1-ubyte")
+    test_images_filepath = join(data_root, "t10k-images.idx3-ubyte")
+    test_labels_filepath = join(data_root, "t10k-labels.idx1-ubyte")
+
     train_ds = MnistDataset(train_images_filepath, train_labels_filepath, transform=transform)
     test_ds = MnistDataset(test_images_filepath, test_labels_filepath, transform=transform)
 
@@ -182,14 +194,11 @@ if __name__ == "__main__":
     from sys import argv
     
     if len(argv) < 6:
-        print("Usage: python mnist_loader.py <train_images> <train_labels> <test_images> <test_labels> <output_dir>")
+        print("Usage: python mnist_loader.py <data_root> <output_dir>")
         exit(1)
     
     train_loader, test_loader = make_mnist_dataloaders(
-        argv[1],
-        argv[2],
-        argv[3],
-        argv[4],
+        data_root=argv[1],
         batch_size=1
     )
-    output_split_csv(train_loader, test_loader, output_dir=argv[5])
+    output_split_csv(train_loader, test_loader, output_dir=argv[2])
