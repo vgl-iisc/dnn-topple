@@ -13,6 +13,6 @@ do:
   - wres_mnist
 
 config:
-  tensorboard_dir: ./training-inference/tensorboard
-  checkpoint_dir: ./training-inference/checkpoints
+  tensorboard_dir: C:/home/llvis/model_training/tensorboard
+  checkpoint_dir: C:/home/llvis/model_training/checkpoints
   device: cuda

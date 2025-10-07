@@ -25,13 +25,7 @@ import torchvision.models as tv_models
 
 
 def resnet18(num_classes: int = 10) -> nn.Module:
-    """Return torchvision's resnet18 (canonical name).
-
-    This is the standard ResNet implementation from torchvision. Note some
-    code in this repo historically referred to a 'resnet20' CIFAR variant;
-    callers can still pass that alias to `create_model` and it will map to
-    this implementation.
-    """
+    """Return torchvision's resnet18"""
     model = tv_models.resnet18()
     in_features = model.fc.in_features
     model.fc = nn.Linear(in_features, num_classes)
@@ -39,11 +33,7 @@ def resnet18(num_classes: int = 10) -> nn.Module:
 
 
 def wide_resnet50_2(num_classes: int = 10) -> nn.Module:
-    """Return torchvision's wide_resnet50_2 (canonical name).
-
-    This maps the repository's earlier 'wideresnet28_10' alias to the standard
-    torchvision `wide_resnet50_2` implementation for clarity.
-    """
+    """Return torchvision's wide_resnet50_2"""
     model = tv_models.wide_resnet50_2()
     if hasattr(model, 'fc'):
         in_features = model.fc.in_features
@@ -63,11 +53,7 @@ def wide_resnet50_2(num_classes: int = 10) -> nn.Module:
 
 # ---------------------- DenseNet / VGG helpers ----------------------
 def densenet121(num_classes: int = 10) -> nn.Module:
-    """Return torchvision's densenet121 (canonical name).
-
-    Formerly exposed as 'densenet' helper; use the canonical `densenet121`
-    name to avoid confusion.
-    """
+    """Return torchvision's densenet121"""
     model = tv_models.densenet121()
     # adapt classifier
     in_features = model.classifier.in_features
@@ -76,7 +62,7 @@ def densenet121(num_classes: int = 10) -> nn.Module:
 
 
 def vgg16(num_classes: int = 10) -> nn.Module:
-    """Return torchvision's vgg16 (canonical name)."""
+    """Return torchvision's vgg16"""
     model = tv_models.vgg16()
     # adapt classifier: replace the last linear layer while preserving the Sequential
     if isinstance(model.classifier, nn.Sequential):
@@ -158,7 +144,6 @@ def create_model(
 
 
 if __name__ == '__main__':
-    # quick smoke instantiation for each supported architecture
     print('Creating example models:')
     for name in ('resnet18', 'densenet121', 'vgg16', 'wide_resnet50_2'):
         try:

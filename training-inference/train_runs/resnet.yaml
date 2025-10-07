@@ -2,6 +2,7 @@ runs:
   resnet_cifar:
     seed: 1759764376
     dataset: cifar10
+    epochs: 50
 
   resnet_mnist:
     seed: 1759764379
@@ -10,5 +11,6 @@ runs:
 model: resnet18
 batch_size: 128
 epochs: 15
-lr: 0.001
+lr: 0.01
 momentum: 0.9
+weight_decay: 0.0001

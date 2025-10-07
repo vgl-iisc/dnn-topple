@@ -1,0 +1,14 @@
+datasets: 
+  cifar10: ./datasets/cifar10/data
+  mnist: ./datasets/mnist/data
+
+do:
+  - densenet_cifar
+  - resnet_cifar
+  - vgg_cifar
+  - wres_cifar
+
+config:
+  tensorboard_dir: C:/home/llvis/model_training/tensorboard
+  checkpoint_dir: C:/home/llvis/model_training/checkpoints
+  device: cuda

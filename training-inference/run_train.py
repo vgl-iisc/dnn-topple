@@ -3,7 +3,7 @@
 This script expects a YAML configuration describing the dataset, model,
 and training hyperparameters. 
 Run:
-	python run_train.py --config path/to/config.yaml
+	python run_train.py --config path/to/config.yaml -o path/to/output.log
 """
 
 import argparse
@@ -11,7 +11,6 @@ import os
 from sched import scheduler
 import yaml
 import time
-from pprint import pformat
 
 from tqdm import tqdm
 
@@ -24,6 +23,10 @@ from torch.utils.tensorboard import SummaryWriter
 import cifar10_loader
 import mnist_loader
 import model_loader
+
+from logging import Logger, FileHandler, Formatter, StreamHandler
+
+logger = Logger(__name__)
 
 def set_seed(seed: int):
 	torch.manual_seed(seed)
@@ -70,8 +73,9 @@ def build_model(cfg, num_classes, device):
 def make_optimizer(model, cfg):
 	lr = cfg["lr"]
 	momentum = cfg["momentum"]
+	decay = cfg.get("weight_decay", 0.0)
 
-	return torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum)
+	return torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=decay)
 
 def train_epoch(model, loader, criterion, optimizer, device, epoch, writer=None):
 	model.train()
@@ -131,6 +135,8 @@ def save_checkpoint(state, ckpt_dir, epoch):
 def do_run(cfg, device, tboard_base, checkpoints_base):
 	train_loader, test_loader = get_dataloaders(cfg)
 	num_classes = train_loader.dataset.num_classes
+ 
+	logger.info(f"Using config: {cfg}")
 
 	model = build_model(cfg, num_classes, device)
 
@@ -150,13 +156,14 @@ def do_run(cfg, device, tboard_base, checkpoints_base):
 	epochs = cfg["epochs"]
 
 	best_val_acc = 0.0
+	best_epoch = 0
 	ckpt_dir = checkpoints_base
 
 	for epoch in range(1, epochs + 1):
 		t0 = time.time()
-		print(f'--- Epoch {epoch}/{epochs} ---')
+		logger.info(f'--- Epoch {epoch}/{epochs} ---')
 		train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, epoch, writer)
-		print('Evaluating on validation set...')
+		logger.info('Evaluating on validation set...')
 		val_loss, val_acc = validate(model, test_loader, criterion, device)
 
 		writer.add_scalar('train/loss', train_loss, epoch)
@@ -169,7 +176,7 @@ def do_run(cfg, device, tboard_base, checkpoints_base):
 			writer.add_scalar(f'optimizer/group_{i}_lr', param_group.get('lr', 0.0), epoch)
 
 		epoch_time = time.time() - t0
-		print(f'Epoch {epoch}/{epochs} - train_loss: {train_loss:.4f}, train_acc: {train_acc:.4f}, val_loss: {val_loss:.4f}, val_acc: {val_acc:.4f} ({epoch_time:.1f}s)')
+		logger.info(f'Epoch {epoch}/{epochs} - train_loss: {train_loss:.4f}, train_acc: {train_acc:.4f}, val_loss: {val_loss:.4f}, val_acc: {val_acc:.4f} ({epoch_time:.1f}s)')
 
 		# checkpoint
 		state = {
@@ -181,20 +188,33 @@ def do_run(cfg, device, tboard_base, checkpoints_base):
 		save_checkpoint(state, ckpt_dir, epoch)
 		if val_acc > best_val_acc:
 			best_val_acc = val_acc
+			best_epoch = epoch
 			best_path = os.path.join(ckpt_dir, 'best.pt')
 			torch.save(state, best_path)
+   
+	logger.info(f'Best validation accuracy: {best_val_acc:.4f} @ {best_epoch}')
 
 	writer.close()
 
 def main(argv=None):
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--config', '-c', required=True, help='YAML config file')
+	parser.add_argument('--output_file', '-o', required=True, help='output file to log metrics to')
 	parser.add_argument('--tensorboard_dir', default=None, help='override tensorboard dir from config')
 	parser.add_argument('--checkpoint_dir', default=None, help='override checkpoint dir from config')
 	args = parser.parse_args(argv)
 
 	with open(args.config, 'r') as f:
 		global_cfg = yaml.safe_load(f)
+
+	log_formatter = Formatter('%(asctime)s - %(levelname)s - %(message)s')
+	file_handler = FileHandler(args.output_file)
+	file_handler.setFormatter(log_formatter)
+	stream_handler = StreamHandler()
+	stream_handler.setFormatter(log_formatter)
+	logger.addHandler(file_handler)
+	logger.addHandler(stream_handler)
+	logger.setLevel('INFO')
 
 	runs = {}
 
@@ -207,12 +227,11 @@ def main(argv=None):
 			run_cfg = yaml.safe_load(f)
 			assert 'runs' in run_cfg, f'Invalid run file {run_file}, missing "runs" key'
 
-			top_level = copy.deepcopy(run_cfg)
-			top_level.pop('runs', None)
-
 			for k, v in run_cfg['runs'].items():
-				v.update(top_level)
-				runs[k] = v
+				cfg = copy.deepcopy(run_cfg)
+				cfg.pop('runs', None)
+				cfg.update(v)
+				runs[k] = cfg
 				runs[k]["data_root"] = global_cfg["datasets"][runs[k]["dataset"]]
 
 	todo = global_cfg["do"]
@@ -236,9 +255,9 @@ def main(argv=None):
 		os.makedirs(tb_dir, exist_ok=False)
 		os.makedirs(ckpt_dir, exist_ok=False)
 
-		print(f'\n=== Starting run: {name} ===')
+		logger.info(f'\n=== Starting run: {name} ===')
 		do_run(cfg, device, tb_dir, ckpt_dir)
-		print(f'=== Finished run: {name} ===\n')
+		logger.info(f'=== Finished run: {name} ===\n')
 
 
 if __name__ == '__main__':
