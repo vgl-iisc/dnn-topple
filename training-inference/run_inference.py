@@ -21,6 +21,7 @@ import mnist_loader
 import model_loader
 
 import pandas as pd
+import numpy as np
 
 from logging import Logger, FileHandler, Formatter, StreamHandler
 
@@ -139,8 +140,9 @@ def do_run(dataset, data_root, arch, checkpoints_dir, collection, epochs, output
 			f.writelines([str(int(pred)) + "\n" for pred in output['predicted']])
    
 		for tag, activations in collected_activations.items():
-			with open(os.path.join(tens_dir, f"vectors_a{tag}_e{epoch}.txt"), 'w') as f:
-				f.writelines([' '.join(map(str, act.numpy().flatten())) + "\n" for act in activations])
+			collated = torch.stack(activations).detach().cpu().numpy().reshape(len(activations), -1)
+			logger.info(f"Writing activations for tag {tag} with shape {collated.shape}")
+			np.savetxt(os.path.join(tens_dir, f"vectors_a{tag}_e{epoch}.txt"), collated)
   	
 	def write_compiled_csv(epoch_results, output_root):
 		
@@ -265,6 +267,9 @@ def main(argv=None):
 	base_checkpoints_dir = cfg['checkpoints_dir']
 	base_output_root = cfg['save_dir']
 	device = torch.device(cfg.get('device', 'cpu'))
+ 
+	logger.info(f"Using device: {device}")
+ 
 	todo = cfg["do"]
  
 	for task in todo:
