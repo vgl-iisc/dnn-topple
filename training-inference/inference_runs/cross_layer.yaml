@@ -1,0 +1,119 @@
+datasets: 
+  cifar10: ./datasets/cifar10/data
+  mnist: ./datasets/mnist/data
+
+epochs:
+  cifar10: 
+    - best
+  mnist: 
+    - best
+
+collect:
+  # after and between dense blocks
+  densenet121:
+    - path: classifier
+      tag: 1
+    - path: features.denseblock4
+      tag: 2
+    - path: features.transition3
+      tag: 3
+    - path: features.denseblock3
+      tag: 4
+    - path: features.transition2
+      tag: 5
+    - path: features.denseblock2
+      tag: 6
+    - path: features.transition1
+      tag: 7
+    - path: features.denseblock1
+      tag: 8
+
+  # after each set of 2 basic blocks
+  resnet18:
+    - path: fc
+      tag: 1
+    - path: layer4
+      tag: 2
+    - path: layer3
+      tag: 3
+    - path: layer2
+      tag: 4
+    - path: layer1
+      tag: 5
+
+  # after each pooling layer
+  vgg16:
+    - path: classifier[6]
+      tag: 1
+    - path: classifier
+      tag: 2
+    - path: features[24]
+      tag: 3
+    - path: features[17]
+      tag: 4
+    - path: features[10]
+      tag: 5
+    - path: features[5]
+      tag: 6
+    - path: features
+      tag: 7
+
+  # each layer is 3 bottleneck blocks
+  wide_resnet50_2:
+    - path: fc
+      tag: 1
+    - path: layer4
+      tag: 2
+    - path: layer3
+      tag: 3
+    - path: layer2
+      tag: 4
+    - path: layer1
+      tag: 5
+
+runs:
+  densenet_cifar:
+    model: densenet121
+    dataset: cifar10
+
+  densenet_mnist:
+    model: densenet121
+    dataset: mnist
+
+  resnet_cifar:
+    model: resnet18
+    dataset: cifar10
+
+  resnet_mnist:
+    model: resnet18
+    dataset: mnist
+
+  vgg_cifar:
+    model: vgg16
+    dataset: cifar10
+
+  vgg_mnist:
+    model: vgg16
+    dataset: mnist
+
+  wres_cifar:
+    model: wide_resnet50_2
+    dataset: cifar10
+
+  wres_mnist:
+    model: wide_resnet50_2
+    dataset: mnist
+
+do:
+  - densenet_cifar
+  - densenet_mnist
+  - resnet_cifar
+  - resnet_mnist
+  - vgg_cifar
+  - vgg_mnist
+  - wres_cifar
+  - wres_mnist
+
+checkpoints_dir: C:/home/llvis/trained_models/
+save_dir: data/landscape_data_penultimate/
+device: cuda

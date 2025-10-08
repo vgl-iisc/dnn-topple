@@ -1,0 +1,74 @@
+datasets: 
+  cifar10: ./datasets/cifar10/data
+  mnist: ./datasets/mnist/data
+
+epochs:
+  cifar10: 
+    - best
+    - [0, 51, 3]
+  mnist: 
+    - all
+
+collect:
+  densenet121:
+    - path: classifier
+      tag: 1
+
+  resnet18:
+    - path: fc
+      tag: 1
+
+  vgg16:
+    - path: classifier[6]
+      tag: 1
+
+  wide_resnet50_2:
+    - path: fc
+      tag: 1
+
+runs:
+  densenet_cifar:
+    model: densenet121
+    dataset: cifar10
+
+  densenet_mnist:
+    model: densenet121
+    dataset: mnist
+
+  resnet_cifar:
+    model: resnet18
+    dataset: cifar10
+
+  resnet_mnist:
+    model: resnet18
+    dataset: mnist
+
+  vgg_cifar:
+    model: vgg16
+    dataset: cifar10
+
+  vgg_mnist:
+    model: vgg16
+    dataset: mnist
+
+  wres_cifar:
+    model: wide_resnet50_2
+    dataset: cifar10
+
+  wres_mnist:
+    model: wide_resnet50_2
+    dataset: mnist
+
+do:
+  - densenet_cifar
+  - densenet_mnist
+  - resnet_cifar
+  - resnet_mnist
+  - vgg_cifar
+  - vgg_mnist
+  - wres_cifar
+  - wres_mnist
+
+checkpoints_dir: C:/home/llvis/trained_models/
+save_dir: data/landscape_data_penultimate/
+device: cuda

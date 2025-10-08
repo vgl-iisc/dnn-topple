@@ -101,6 +101,8 @@ def _load_checkpoint(model: nn.Module, checkpoint_path: Optional[str], device: t
     state = torch.load(checkpoint_path, map_location=device)
     if 'state_dict' in state:
         sd = state['state_dict']
+    elif 'model_state_dict' in state:
+        sd = state['model_state_dict']
     else:
         sd = state
     # try to adapt common 'module.' prefix

@@ -220,7 +220,7 @@ def main(argv=None):
 
 	runs = {}
 
-	train_runs_dir = os.path.join(os.path.dirname(__file__), 'train_runs')
+	train_runs_dir = global_cfg["experiments_dir"]
 	for run_file in os.listdir(train_runs_dir):
 		if not run_file.endswith('.yaml'):
 			continue

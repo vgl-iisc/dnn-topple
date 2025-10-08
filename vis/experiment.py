@@ -37,7 +37,7 @@ class Dataset:
 #         self.name = name
 
 class LossLandscapeExperiment:
-    def __init__(self, dataset: Dataset, split: str, model: str, k: int, epoch: int, layer: int = -1) -> None:
+    def __init__(self, dataset: Dataset, split: str, model: str, k: int, epoch: int, layer: str) -> None:
         self.dataset = dataset
         self.split = split
         self.model = model
@@ -45,7 +45,7 @@ class LossLandscapeExperiment:
         self.epoch = epoch
         self.k = k
 
-        self.layer_tag = f"a{layer * -1}"
+        self.layer_tag = f"{layer}"
         self.epoch_tag = f"e{epoch}"
         self.model_data = f"{self.model}_{self.dataset.name}"
         
@@ -58,9 +58,9 @@ class LossLandscapeExperiment:
     def get_paths(self, data_dir, ct_dir) -> dict:
         return {
             "ctree": os.path.join(ct_dir, f"{self.model_data}", self.split, f"ctree_{self.layer_tag}_{self.epoch_tag}_{self.k}"),
-            "losses": os.path.join(data_dir, f"{self.model_data}", "Losses", self.split, f"loss_{self.layer_tag}_{self.epoch_tag}.txt"),
+            "losses": os.path.join(data_dir, f"{self.model_data}", "Losses", self.split, f"loss_{self.epoch_tag}.txt"),
             "tensors": os.path.join(data_dir, f"{self.model_data}", "Tensors", self.split, f"vectors_{self.layer_tag}_{self.epoch_tag}.txt"),
-            "predictions": os.path.join(data_dir, f"{self.model_data}", "Predictions", self.split, f"predictions_{self.layer_tag}_{self.epoch_tag}.txt"),
+            "predictions": os.path.join(data_dir, f"{self.model_data}", "Predictions", self.split, f"predictions_{self.epoch_tag}.txt"),
         }
     
     def validate_paths(self, data_dir, ct_dir) -> bool:
@@ -137,7 +137,6 @@ def find_all_experiments(datasets: dict[str, Dataset], data_dir: str, ct_dir: st
         for tree_file in tree_files:
             _, layer, epoch, k = tree_file.split("_")
 
-            layer = int(layer[1:]) * -1
             epoch = int(epoch[1:])
             k = int(k.split(os.path.extsep)[0])
             

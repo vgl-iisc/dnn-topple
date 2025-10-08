@@ -15,4 +15,5 @@ do:
 config:
   tensorboard_dir: C:/home/llvis/model_training/tensorboard
   checkpoint_dir: C:/home/llvis/model_training/checkpoints
+  experiments_dir: ./training-inference/train_runs
   device: cuda
