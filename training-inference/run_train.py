@@ -128,7 +128,7 @@ def validate(model, loader, criterion, device):
 
 def save_checkpoint(state, ckpt_dir, epoch):
 	os.makedirs(ckpt_dir, exist_ok=True)
-	path = os.path.join(ckpt_dir, f'checkpoint_epoch_{epoch}.pt')
+	path = os.path.join(ckpt_dir, f'checkpoint_e{epoch}.pt')
 	torch.save(state, path)
 	return path
 
@@ -188,8 +188,10 @@ def do_run(cfg, device, tboard_base, checkpoints_base):
 		save_checkpoint(state, ckpt_dir, epoch)
 		if val_acc > best_val_acc:
 			best_val_acc = val_acc
+			if best_epoch > 0:
+				os.remove(os.path.join(ckpt_dir, f'best_e{best_epoch}.pt'))
 			best_epoch = epoch
-			best_path = os.path.join(ckpt_dir, 'best.pt')
+			best_path = os.path.join(ckpt_dir, f'best_e{epoch}.pt')
 			torch.save(state, best_path)
    
 	logger.info(f'Best validation accuracy: {best_val_acc:.4f} @ {best_epoch}')

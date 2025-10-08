@@ -11,6 +11,6 @@ runs:
 model: wide_resnet50_2
 batch_size: 128
 epochs: 15
-lr: 0.01
+lr: 0.1
 momentum: 0.9
 weight_decay: 0.0001
