@@ -10,5 +10,10 @@ __pycache__
 
 *_backup
 
+landscape_data*
+ctrees*
+knn_complexes*
+charts*
+
 # temporary output text files
 out*.txt
