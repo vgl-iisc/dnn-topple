@@ -59,15 +59,20 @@ class Cifar10Dataset(Dataset):
     label_tensor is a long (int64) scalar.
     """
 
-    def __init__(self, root: str, train: bool = True, transform: Optional[Callable] = None, permute: bool = True):
+    def __init__(self, root: str, train: bool = True, transform: Optional[Callable] = None, permute: bool = True, subset: Optional[int] = None):
         self.cifar = CIFAR10(root=root, train=train, download=False)
 
         # data has shape (N, H, W, C)
         self.images = np.asarray(self.cifar.data)
         self.labels = np.asarray(self.cifar.targets, dtype=np.int64)
-        self.transform = transform
-
-        if transform is None:
+        
+        if subset is not None:
+            self.images = self.images[:subset]
+            self.labels = self.labels[:subset]
+        
+        if transform is not None:
+            self.transform = transform
+        else:
             self.transform = T.ToTensor()
 
         # Deterministic permutation (fixed seed) so DataLoader(shuffle=False) yields reproducible order
@@ -85,6 +90,7 @@ class Cifar10Dataset(Dataset):
     def __getitem__(self, idx: int):
         idx = int(self.perm[idx].item())
         img = self.images[idx]
+
         tensor_img = self.transform(img)
 
         label = int(self.labels[idx])

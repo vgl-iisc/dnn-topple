@@ -80,12 +80,17 @@ class MnistDataset(Dataset):
     label_tensor is a long (int64) scalar.
     """
 
-    def __init__(self, images_filepath: str, labels_filepath: str, transform: Optional[Callable] = None, permute: bool = True):
+    def __init__(self, images_filepath: str, labels_filepath: str, transform: Optional[Callable] = None, permute: bool = True, subset: Optional[int] = None):
         self.images, self.labels = read_images_labels(images_filepath, labels_filepath)
-        self.transform = transform
-
-        if transform is None:
+        
+        if transform is not None:
+            self.transform = transform
+        else:
             self.transform = T.ToTensor()
+
+        if subset is not None:
+            self.images = self.images[:subset]
+            self.labels = self.labels[:subset]
 
         torch.random.manual_seed(SEED)
         self.perm = torch.randperm(len(self.labels))
