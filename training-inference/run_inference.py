@@ -32,9 +32,11 @@ def extract_batch(batch):
 	if isinstance(batch, dict):
 		images = batch['image']
 		labels = batch['label']
+		idx = batch['index']
 	else:
 		images, labels = batch
-	return images, labels
+		idx = 0
+	return images, labels, idx
 
 def get_dataloaders(dataset, data_root):
 	
@@ -62,10 +64,11 @@ def infer(model, loader, criterion, device):
 	labels = []
 	predicted = []
 	correct= []
+	idxs = []
  
 	with torch.no_grad():
 		for batch in tqdm(loader, total=len(loader), desc='Inferring'):
-			image, label = extract_batch(batch)
+			image, label, idx = extract_batch(batch)
 			image = image.to(device)
 			label = label.to(device)
 			output = model(image)
@@ -79,6 +82,7 @@ def infer(model, loader, criterion, device):
 			labels.append(label.item())
 			predicted.append(pred.item())
 			correct.append(predicted[-1] == labels[-1])
+			idxs.append(idx)
    
 	total = len(correct)
    
@@ -89,6 +93,7 @@ def infer(model, loader, criterion, device):
 		"labels": labels,
 		"predicted": predicted,
 		"outputs": output,
+		"indices": idxs
 	}
 
 def attach_collection_hooks(model, collection, collected_input_activations):
@@ -133,11 +138,11 @@ def do_run(dataset, data_root, arch, checkpoints_dir, collection, epochs, output
 		os.makedirs(preds_dir, exist_ok=True)
 		os.makedirs(tens_dir, exist_ok=True)
   
-		with open(os.path.join(loss_dir, f"loss_e{epoch}.txt"), 'w') as f:
-			f.writelines([str(l) + "\n" for l in output['losses']])
-   
-		with open(os.path.join(preds_dir, f"predictions_e{epoch}.txt"), 'w') as f:
-			f.writelines([str(int(pred)) + "\n" for pred in output['predicted']])
+		collected_losses = np.array(output['losses'], dtype=np.float64).reshape(-1, 1)
+		np.savetxt(os.path.join(loss_dir, f"losses_e{epoch}.txt"), collected_losses)
+
+		collected_preds = np.array(output['predicted'], dtype=np.uint64).reshape(-1, 1)
+		np.savetxt(os.path.join(preds_dir, f"predictions_e{epoch}.txt"), collected_preds, fmt='%d')
    
 		for tag, activations in collected_activations.items():
 			collated = torch.stack(activations).detach().cpu().numpy().reshape(len(activations), -1)
@@ -161,7 +166,7 @@ def do_run(dataset, data_root, arch, checkpoints_dir, collection, epochs, output
 				num_samples = len(results[split]['labels'])
 				data["Epoch_No"].extend([epoch] * num_samples)
 				data["Split"].extend([split] * num_samples)
-				data["Image_Index"].extend(list(range(num_samples)))
+				data["Image_Index"].extend(results[split]['indices'])
 				data["Image_Function_value"].extend(results[split]['losses'])
 				data["Original_Label"].extend(results[split]['labels'])
 				data["Predicted_Label"].extend(results[split]['predicted'])
