@@ -120,8 +120,7 @@ def attach_collection_hooks(model, collection, collected_input_activations):
 		mod = find_module(path)
 		logger.info(f"Attaching hook to {path} with tag {tag}: found {mod.__class__.__name__}")
   
-		def hook_fn(module, input, output):
-			collected_input_activations[tag].append(input[0][0].detach().cpu())
+		hook_fn = lambda m, i, o, tag=tag: collected_input_activations[tag].append(i[0][0].detach().cpu())
    
 		hooks.append(mod.register_forward_hook(hook_fn))
   
