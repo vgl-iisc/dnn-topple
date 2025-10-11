@@ -32,7 +32,7 @@ def extract_batch(batch):
 	if isinstance(batch, dict):
 		images = batch['image']
 		labels = batch['label']
-		idx = batch['index']
+		idx = int(batch['index'].item())
 	else:
 		images, labels = batch
 		idx = 0
