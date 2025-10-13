@@ -233,7 +233,7 @@ def render_coverage_map(exp: LossLandscapeExperiment):
         plot = f2c_plot(selected_features, fine_grained, show_proportions, freeze_top)
         
         if plot is None:
-            st.warning("No features selected.")
+            st.warning("No datapoints in selection.")
         else:
             st.altair_chart(plot, use_container_width=True)
         

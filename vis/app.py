@@ -49,11 +49,12 @@ def compute_arcs_and_coverage(exp: LossLandscapeExperiment, simpl: float):
         st.session_state[f"preds_{repr(exp)}"] = preds
         compute_feature_coverage_data(exp, feats, preds)
         
+# TODO: one idea would be to lift all keys into lambda functions so they are only evaluated when needed, and consistent throughout
 
 def render_experiment(exp: LossLandscapeExperiment, half_width: bool):
 
     with st.expander("Steady State Finder", expanded=False):
-        state_tol = st.slider("Steady Simplification State Coverage Threshold", min_value=0.0, max_value=100.0, value=5.0, step=0.1, key=f"tol_slider_{repr(exp)}", format="%0.1f%%",
+        state_tol = st.slider("Steady Simplification State Coverage Threshold", min_value=0.0, max_value=100.0, value=0.002, step=0.001, key=f"tol_slider_{repr(exp)}", format="%0.3f%%",
                                 help="Minimum proportion of the range of thresholds for which the number of minima should remain constant for a simplification to be considered steady.")
         steady_thresh, steady_minima = get_steady_simplification_states(exp, state_tol / 100.0)
         
@@ -61,18 +62,21 @@ def render_experiment(exp: LossLandscapeExperiment, half_width: bool):
             st.session_state[f"feats_{repr(exp)}"] = None
         
         max_wt = get_steady_simplification_states(exp, 0.0)[0][-1][1]
-        
-        sizes = sorted([(t[1] - t[0], (t[0] + t[1]) / 2.0) for t in steady_thresh], reverse=True)
-        
+                
         st.dataframe(pd.DataFrame({"Steady Threshold Start": [t[0] for t in steady_thresh], "Steady Threshold End": [t[1] for t in steady_thresh], "Number of Valleys": steady_minima}))
         
-    simpl_def = sizes[0][1] if len(sizes) > 0 else max_wt / 2.0
-    # TODO: add manual entry for simplification threshold
-    simpl = st.slider("Select Simplification Threshold", min_value=0.0, max_value=max_wt, value=simpl_def, step=0.01, key=f"simpl_slider_{repr(exp)}")
+    # pick start+eps of first steady state as default simplification ("denoising" justification) 
+    simpl_def = steady_thresh[0][0] + (steady_thresh[0][1] - steady_thresh[0][0]) / 100 if len(steady_thresh) > 0 else max_wt / 2.0
+    simpl_key = f"simpl_thresh_{repr(exp)}"
+
+    if simpl_key not in st.session_state:
+        st.session_state[simpl_key] = simpl_def
+
+    simpl = st.number_input("Select Simplification Threshold", max_value=max_wt, step=0.0001, key=simpl_key, format="%0.32f")
 
     with st.container(horizontal=True, horizontal_alignment="center") as c:
-        st.button("Reset Simplification", on_click=lambda: st.session_state.update({f"simpl_slider_{repr(exp)}": simpl_def}), key=f"reset_button_{repr(exp)}")
-        
+        st.button("Reset Simplification", on_click=lambda: st.session_state.update({simpl_key: simpl_def}), key=f"reset_button_{repr(exp)}")
+
         if st.button("Compute Arcs and Coverage", key=f"compute_button_{repr(exp)}"):
             compute_arcs_and_coverage(exp, simpl)
 

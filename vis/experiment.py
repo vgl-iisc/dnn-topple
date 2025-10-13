@@ -80,7 +80,9 @@ class LossLandscapeExperiment:
 
             if not os.path.exists(path):
                 print(f"Path for {key} does not exist: {path}")
-                return False
+                
+                if key != "compiled_res":  # compiled results is not critical
+                    return False
             
         return True
     

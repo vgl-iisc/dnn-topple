@@ -10,6 +10,8 @@ __pycache__
 
 *_backup
 
+# data
+data_old/*
 landscape_data*
 ctrees*
 knn_complexes*

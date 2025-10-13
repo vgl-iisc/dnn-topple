@@ -1,1 +1,0 @@
-streamlit run vis/app.py ctrees landscape_data datasets
