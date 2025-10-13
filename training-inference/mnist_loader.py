@@ -174,7 +174,7 @@ def output_split_csv(train_loader, test_loader, output_dir):
         df.to_csv(os.path.join(output_dir, filename), header=True, index=False)
 
     save_loader_to_csv(train_loader, 'train.csv')
-    save_loader_to_csv(test_loader, 'test.csv')
+    save_loader_to_csv(test_loader, 'val.csv')
 
     def save_loaders_to_csv(train_loader, test_loader, output_file):
         all_data = []
@@ -189,16 +189,16 @@ def output_split_csv(train_loader, test_loader, output_dir):
             indices = batch['index']
             for j, label in enumerate(labels):
                 orig_idx = int(indices[j])
-                all_data.append(['test', orig_idx, int(label.item())])
+                all_data.append(['val', orig_idx, int(label.item())])
         df = pd.DataFrame(all_data, columns=["Split", "Image_Index", "Original_Label"])
         df.to_csv(output_file, header=True, index=False)
     
-    save_loaders_to_csv(train_loader, test_loader, join(output_dir, 'trainUtest.csv'))
+    save_loaders_to_csv(train_loader, test_loader, join(output_dir, 'trainUval.csv'))
     
 if __name__ == "__main__":
     from sys import argv
     
-    if len(argv) < 6:
+    if len(argv) < 3:
         print("Usage: python mnist_loader.py <data_root> <output_dir>")
         exit(1)
     

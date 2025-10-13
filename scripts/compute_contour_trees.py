@@ -41,9 +41,9 @@ def main():
         os.makedirs(output_root, exist_ok=True)
 
         for f in scalar_files:
-            name = f.replace("loss", "adj").split(os.extsep)[0]
+            epoch = os.path.splitext(f)[0][f.find("_e"):].split("_")[1]
 
-            complexes = glob(f"{name}_*_connected.txt", root_dir=complex_root)
+            complexes = glob(f"adj_*_{epoch}_*_connected.txt", root_dir=complex_root)
 
             for g in complexes:
                 scalar_file = os.path.join(root, f)

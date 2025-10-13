@@ -133,7 +133,7 @@ F2C_VIEWS = ["plain", "correctness", "class-wise confusion"]
 
 def render_coverage_map(exp: LossLandscapeExperiment):
     
-    def f2c_plot(feats: list[RichFeature], view: str, show_proportions: bool, freeze_top: bool) -> alt.Chart:
+    def f2c_plot(feats: list[RichFeature], view: str, show_proportions: bool, freeze_top: bool) -> alt.Chart | None:
         classes = exp.dataset.classes
         colors = {cls: class2color(i) for i, cls in enumerate(classes)}
         node2label = exp.dataset.labels_by_split[exp.split]
@@ -157,6 +157,9 @@ def render_coverage_map(exp: LossLandscapeExperiment):
                 "Predicted Class": exp.dataset.classes[pred_label],
                 "Correct": true_label == pred_label,
             })
+                
+        if len(data) == 0:
+            return None
                 
         df = pd.DataFrame(data)
         
@@ -229,7 +232,10 @@ def render_coverage_map(exp: LossLandscapeExperiment):
     with f2c:        
         plot = f2c_plot(selected_features, fine_grained, show_proportions, freeze_top)
         
-        st.altair_chart(plot, use_container_width=True)
+        if plot is None:
+            st.warning("No features selected.")
+        else:
+            st.altair_chart(plot, use_container_width=True)
         
     with c2f:
         st.info("Class to Feature view not implemented yet.")

@@ -13,13 +13,15 @@ import numpy as np
 import networkx as nx
 
 def main():
-    if len(argv) != 4:
-        print("Usage: python compute_knn_complexes.py <data_dir> <complexes_dir> <max_k>")
+    if len(argv) != 4 and len(argv) != 5:
+        print("Usage: python compute_knn_complexes.py <data_dir> <complexes_dir> <max_k> [exact_k]")
         return
     
     data_dir = argv[1]
     complexes_dir = argv[2]
     max_k = int(argv[3])
+    
+    exact = len(argv) == 5
 
     for root, dirs, files in os.walk(data_dir):
         if not "Tensors" in root:
@@ -44,6 +46,12 @@ def main():
             
             if not nx.is_connected(Gmax):
                 print(f"Warning: max_k={max_k} does not yield a connected graph for {tensor_path}, skipping")
+                continue
+
+            if exact:
+                name = f"adj_{tensor_file[len('vectors_'):-4]}_{max_k}_connected"
+                nx.write_adjlist(Gmax, os.path.join(save_basepath, f"{name}.txt"))
+                print(f"Done with {tensor_path}, exact k={max_k}")
                 continue
 
             while l < r:

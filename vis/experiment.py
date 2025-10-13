@@ -53,14 +53,15 @@ class LossLandscapeExperiment:
         return hash((self.dataset.name, self.split, self.model, self.k, self.epoch, self.layer))
 
     def __repr__(self) -> str:
-        return f"{self.model} ({self.dataset.name}), k={self.k}, layer={self.layer}, epoch={self.epoch}"
+        return f"{self.model} ({self.dataset.name}-{self.split}), k={self.k}, layer={self.layer}, epoch={self.epoch}"
     
     def get_paths(self, data_dir, ct_dir) -> dict:
         return {
             "ctree": os.path.join(ct_dir, f"{self.model_data}", self.split, f"ctree_{self.layer_tag}_{self.epoch_tag}_{self.k}"),
-            "losses": os.path.join(data_dir, f"{self.model_data}", "Losses", self.split, f"loss_{self.epoch_tag}.txt"),
+            "losses": os.path.join(data_dir, f"{self.model_data}", "Losses", self.split, f"losses_{self.epoch_tag}.txt"),
             "tensors": os.path.join(data_dir, f"{self.model_data}", "Tensors", self.split, f"vectors_{self.layer_tag}_{self.epoch_tag}.txt"),
             "predictions": os.path.join(data_dir, f"{self.model_data}", "Predictions", self.split, f"predictions_{self.epoch_tag}.txt"),
+            "compiled_res": os.path.join(data_dir, f"{self.model_data}", "compiled_results.csv"),
         }
     
     def validate_paths(self, data_dir, ct_dir) -> bool:
