@@ -9,6 +9,10 @@ import pandas as pd
 import numpy as np
 import pyct as ct
 
+import pickle
+import os
+import datetime
+
 ARC_X_AXIS_TYPE = {
     "id": "Feature ID",
     "index": "Index",
@@ -39,7 +43,7 @@ def render_arc_explorer(exp: LossLandscapeExperiment):
         df = pd.DataFrame([{
             "id": f.id,
             "fstart": f.fn_frm,
-            "fend": f.fn_to,
+            "fend": f.fn_to if f.pers > 1e-5 else f.fn_frm + 1e-5,
             "ftype": f.type_string,
             "pers": f.pers,
             "volume": f.size,
@@ -133,7 +137,7 @@ F2C_VIEWS = ["plain", "correctness", "class-wise confusion"]
 
 def render_coverage_map(exp: LossLandscapeExperiment):
     
-    def f2c_plot(feats: list[RichFeature], view: str, show_proportions: bool, freeze_top: bool) -> alt.Chart | None:
+    def f2c_plot(feats: list[RichFeature], view: str, show_what: str, freeze_top: bool) -> alt.Chart | None:
         classes = exp.dataset.classes
         colors = {cls: class2color(i) for i, cls in enumerate(classes)}
         node2label = exp.dataset.labels_by_split[exp.split]
@@ -142,7 +146,6 @@ def render_coverage_map(exp: LossLandscapeExperiment):
         node_feats = set.union(*[set(zip(f.members, [f] * f.size)) for f in feats])
         
         max_class_size = max([exp.dataset.class_size_by_split[exp.split][cls] for cls in exp.dataset.classes])
-        max_class_prop = max_class_size / len(node2label)
         
         data = []
         for (node, feat) in node_feats:
@@ -166,7 +169,7 @@ def render_coverage_map(exp: LossLandscapeExperiment):
         grouping = ["True Label", "True Class"]
         color = None
         pred_tooltip = None
-
+        
         if view == "correctness":
             grouping += ["Correct"]
             color = alt.Color('Correct:N', scale=alt.Scale(domain=[True, False], range=["#4CAF50", "#F44336"]), title="Correctness")
@@ -178,16 +181,24 @@ def render_coverage_map(exp: LossLandscapeExperiment):
 
         df = df.groupby(grouping).size().reset_index(name='count').sort_values(by=["count"], ascending=False)
 
-        # TODO: proportion and coverage are improperly set up
-
-        df["Proportion"] = df['count'] / len(node2label)
+        df["Proportion"] = df['count'] / df['count'].sum()
         df["Coverage"] = [get_class_coverage(exp, entry["count"], entry["True Label"]) for _, entry in df.iterrows()]
         
         scale = alt.Scale()
-        if freeze_top:
-            scale = alt.Scale(domain=[0, max_class_prop if show_proportions else max_class_size])
         
-        y = alt.Y('count', title="Number of Points") if not show_proportions else alt.Y('Proportion', title="Proportion", axis=alt.Axis(format='%'))
+        if show_what == "Coverage":
+            y = alt.Y('Coverage', title="Class Coverage", axis=alt.Axis(format='%'))
+            if freeze_top:
+                scale = alt.Scale(domain=[0, 1.0])
+        elif show_what == "Proportions":
+            y = alt.Y('Proportion', title="Proportion", axis=alt.Axis(format='%'))
+            if freeze_top:
+                scale = alt.Scale(domain=[0, 1.0])
+        else:
+            y = alt.Y('count', title="Number of Points")
+            if freeze_top:
+                scale = alt.Scale(domain=[0, max_class_size])
+
         y = y.scale(scale)
         
         plot = alt.Chart(df).mark_bar().encode(
@@ -220,17 +231,15 @@ def render_coverage_map(exp: LossLandscapeExperiment):
     # UI Controls
     with st.container(horizontal=True, vertical_alignment="top", horizontal_alignment="left"):
         fine_grained = st.selectbox("View", key=f"fine_grained_{repr(exp)}", options=F2C_VIEWS, format_func=lambda x: x.title())
-        
-        with st.container():
-            freeze_top = st.checkbox("Freeze top", key=f"freeze_top_{repr(exp)}")
-            show_proportions = st.checkbox("Proportions instead of counts", key=f"show_proportions_{repr(exp)}")
+        show_what = st.selectbox("Y-axis", key=f"show_what_{repr(exp)}", options=["Counts", "Proportions", "Coverage"], index=2)
+        freeze_top = st.checkbox("Freeze top", key=f"freeze_top_{repr(exp)}", value=True)
         
     f2c, c2f = st.tabs(["Feature to Class", "Class to Feature"])
     
     selected_features = [features[fid] for fid in selection]
     
     with f2c:        
-        plot = f2c_plot(selected_features, fine_grained, show_proportions, freeze_top)
+        plot = f2c_plot(selected_features, fine_grained, show_what, freeze_top)
         
         if plot is None:
             st.warning("No datapoints in selection.")
@@ -239,3 +248,32 @@ def render_coverage_map(exp: LossLandscapeExperiment):
         
     with c2f:
         st.info("Class to Feature view not implemented yet.")
+        
+def render_save():
+    def save_state():
+        os.makedirs("saved_states", exist_ok=True)
+        now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        dump_dict = {k: st.session_state[k] for k in st.session_state if k not in ("preds_cache", "preds_cache_info") and not k.endswith("_button")}
+        with open(f"saved_states/state_{now}.pkl", "wb") as f:
+            pickle.dump(dump_dict, f)
+
+    with st.container(horizontal=True):
+        
+        if st.button("Save State", key="save_state_button"):
+            save_state()
+
+        st.markdown("<div id='save_header'></div>", unsafe_allow_html=True)        
+    
+    st.markdown("""
+<style>
+    div[data-testid="stVerticalBlock"] div:has(div#save_header) {
+        position: fixed;
+        top: 3.875rem;
+        right: 4rem;
+        padding: 1rem 1rem;
+        width: fit-content;
+        z-index: 999;
+    }
+</style>
+    """, unsafe_allow_html=True)

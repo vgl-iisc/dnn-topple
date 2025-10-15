@@ -19,9 +19,11 @@ import pandas as pd
 import altair as alt
 import numpy as np
 
+import pickle
+
 from experiment import Dataset, LossLandscapeExperiment, find_all_datasets, find_all_experiments
 from vis_utils import find_steady_simplification_states, compute_arc_features, compute_feature_map, load_preds, compute_feature_coverage_data
-from components import render_arc_explorer, render_coverage_map
+from components import render_arc_explorer, render_coverage_map, render_save
 
 path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts')))
 from chart_simplification_valleys import get_valley_vs_thresh
@@ -51,21 +53,64 @@ def compute_arcs_and_coverage(exp: LossLandscapeExperiment, simpl: float):
         
 # TODO: one idea would be to lift all keys into lambda functions so they are only evaluated when needed, and consistent throughout
 
+def float_input(key: str, label: str, default: float, min_value = None, max_value = None, step = None, help: str = "") -> float:    
+    val = st.text_input(label, value=str(default), key=key, help=help)
+
+    if val is None or val.strip() == "":
+        st.error("Value cannot be empty.")
+        return default
+
+    try:
+        fval = float(val)
+    except ValueError:
+        st.error(f"Value must be a valid number.")
+        return default
+
+    if min_value is not None and fval < min_value:
+        st.error(f"Value must be at least {min_value}.")
+        return default
+
+    if max_value is not None and fval > max_value:
+        st.error(f"Value must be at most {max_value}.")
+        return default
+
+    if step is not None:
+        # snap to nearest step
+        fval = round((fval - (min_value if min_value is not None else 0)) / step) * step + (min_value if min_value is not None else 0)
+
+    return fval
+
 def render_experiment(exp: LossLandscapeExperiment, half_width: bool):
 
     with st.expander("Steady State Finder", expanded=False):
-        state_tol = st.slider("Steady Simplification State Coverage Threshold", min_value=0.0, max_value=100.0, value=0.002, step=0.001, key=f"tol_slider_{repr(exp)}", format="%0.3f%%",
+        state_tol = float_input(key=f"tol_steady_{repr(exp)}", label="Steady Simplification State Coverage Threshold", default=0.002, min_value=0.0, max_value=100.0, step=0.001,
                                 help="Minimum proportion of the range of thresholds for which the number of minima should remain constant for a simplification to be considered steady.")
+        
+        try:
+            state_tol = float(state_tol)
+        except ValueError:
+            st.error("Tolerance must be a valid number.")
+            st.session_state[f"tol_steady_{repr(exp)}"] = "0.002"
+            state_tol = 0.002
+            
+        if state_tol < 0.0 or state_tol > 100.0:
+            st.error("Tolerance must be between 0 and 100.")
+            st.session_state[f"tol_steady_{repr(exp)}"] = "0.002"
+            state_tol = 0.002
+        
         steady_thresh, steady_minima = get_steady_simplification_states(exp, state_tol / 100.0)
         
         if f"feats_{repr(exp)}" not in st.session_state:
             st.session_state[f"feats_{repr(exp)}"] = None
         
         max_wt = get_steady_simplification_states(exp, 0.0)[0][-1][1]
-                
-        st.dataframe(pd.DataFrame({"Steady Threshold Start": [t[0] for t in steady_thresh], "Steady Threshold End": [t[1] for t in steady_thresh], "Number of Valleys": steady_minima}))
+
+        df = pd.DataFrame({"Steady Threshold Start": [t[0] for t in steady_thresh], "Steady Threshold End": [t[1] for t in steady_thresh],
+                           "Persistence": [t[1] - t[0] for t in steady_thresh], "Number of Valleys": steady_minima})
         
-    # pick start+eps of first steady state as default simplification ("denoising" justification) 
+        st.dataframe(df)
+
+    # pick start+eps of first steady state as default simplification ("denoising" justification)
     simpl_def = steady_thresh[0][0] + (steady_thresh[0][1] - steady_thresh[0][0]) / 100 if len(steady_thresh) > 0 else max_wt / 2.0
     simpl_key = f"simpl_thresh_{repr(exp)}"
 
@@ -105,9 +150,23 @@ def get_steady_simplification_states(exp: LossLandscapeExperiment, tol: float) -
     return steady_thresh, steady_minima
     
 def main():
-    if len(argv) != 4:
+    if len(argv) < 4:
         print("Usage: streamlit run vis/app.py <ct_dir> <landscapes_dir> <datasets_dir>")
         exit(1)
+        
+    # if len(argv) < 4:
+    #     print("Usage: streamlit run vis/app.py <ct_dir> <landscapes_dir> <datasets_dir> [state_file_to_load]")
+    #     exit(1)
+
+    # if len(argv) > 4:
+    #     state_file = argv[4]
+    #     if not os.path.exists(state_file):
+    #         print(f"State file {state_file} does not exist.")
+    #         exit(1)
+    #     with open(state_file, "rb") as f:
+    #         loaded_state = pickle.load(f)
+    #         for k in loaded_state:
+    #             st.session_state[k] = loaded_state[k]
 
     st.set_page_config(layout="wide")
 
@@ -127,10 +186,12 @@ def main():
     st.title("Topological Loss Landscape Explorer")
     st.divider()
 
+    # render_save()
+
     col1, col2 = st.columns([5, 1], vertical_alignment="bottom")
     
     with col1:
-        st.session_state.selected_experiments = st.multiselect("Select experiments", options=experiments, format_func=lambda d: repr(d), key="experiment_selector", max_selections=8)
+        st.session_state.selected_experiments = st.multiselect("Select experiments", options=experiments, format_func=lambda d: repr(d), key="experiment_selector")
     
     with col2:
         st.session_state.comparison_mode = st.checkbox("Comparison Mode", value=True, help="Render groups of experiments side-by-side for easier comparison.", key="comparison_mode_checkbox")
