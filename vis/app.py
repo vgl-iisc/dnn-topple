@@ -106,7 +106,8 @@ def render_experiment(exp: LossLandscapeExperiment, half_width: bool):
         max_wt = get_steady_simplification_states(exp, 0.0)[0][-1][1]
 
         df = pd.DataFrame({"Steady Threshold Start": [t[0] for t in steady_thresh], "Steady Threshold End": [t[1] for t in steady_thresh],
-                           "Persistence": [t[1] - t[0] for t in steady_thresh], "Number of Valleys": steady_minima})
+                           "Persistence": [t[1] - t[0] for t in steady_thresh], "Extremity": [steady_minima[i - 1] - n if i > 0 else 0 for i, n in enumerate(steady_minima)], 
+                           "Number of Valleys": steady_minima})
         
         st.dataframe(df)
 
