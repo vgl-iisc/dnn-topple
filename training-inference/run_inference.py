@@ -136,6 +136,12 @@ def do_run(dataset, data_root, arch, checkpoints_dir, collection, epochs, output
 		os.makedirs(loss_dir, exist_ok=True)
 		os.makedirs(preds_dir, exist_ok=True)
 		os.makedirs(tens_dir, exist_ok=True)
+
+		avg_loss = output["loss"]
+		accuracy = output["accuracy"]
+		
+		with open(os.path.join(output_root, f"metrics_e{epoch}")) as f:
+			f.write(f"avg loss: {avg_loss}\naccuracy: {accuracy}\n")
   
 		collected_losses = np.array(output['losses'], dtype=np.float64).reshape(-1, 1)
 		np.savetxt(os.path.join(loss_dir, f"losses_e{epoch}.txt"), collected_losses)
