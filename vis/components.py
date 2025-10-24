@@ -1,7 +1,13 @@
-from vis_utils import RichFeature, class2color, get_class_coverage, load_preds
+from vis_utils import RichFeature, class2color, get_class_coverage, load_preds, compute_tree_graph
+from dataset_loader import load_dataset
+
+import pyvis.network as net
+
+import os
 
 from experiment import LossLandscapeExperiment
 import streamlit as st
+import streamlit.components.v1 as components
 
 import altair as alt
 import pandas as pd
@@ -10,7 +16,6 @@ import numpy as np
 import pyct as ct
 
 import pickle
-import os
 import datetime
 
 ARC_X_AXIS_TYPE = {
@@ -36,14 +41,16 @@ ALLOWED_TYPE_SETS = {
                 (ct.SADDLE, ct.REGULAR), (ct.MINIMUM, ct.REGULAR), (ct.MAXIMUM, ct.REGULAR)},
 }
 
-def render_arc_explorer(exp: LossLandscapeExperiment):
+def render_tree_explorer(exp: LossLandscapeExperiment):
     
     def arc_explorer_plot(features: list[RichFeature], axis_type: str | list[str]) -> alt.Chart:
+        
+        max_pers = max([f.pers for f in features]) if len(features) > 0 else 1.0
         
         df = pd.DataFrame([{
             "id": f.id,
             "fstart": f.fn_frm,
-            "fend": f.fn_to if f.pers > 1e-5 else f.fn_frm + 1e-5,
+            "fend": f.fn_to if f.pers > max_pers / 50 else f.fn_frm + max_pers / 50,
             "ftype": f.type_string,
             "pers": f.pers,
             "volume": f.size,
@@ -95,43 +102,81 @@ def render_arc_explorer(exp: LossLandscapeExperiment):
         
         return plot
     
+    def arc_explorer(features, allowed_types):
+        simpl: float = st.session_state[f"computed_simpl_{repr(exp)}"]
+                        
+        with st.container(horizontal=True, horizontal_alignment="center") as c:
+            x_type = st.selectbox("X-Axis", options=list(ARC_X_AXIS_TYPE.keys()), index=2, format_func=lambda x: ARC_X_AXIS_TYPE[x], key=f"x_axis_selector_{repr(exp)}")
+        
+        if x_type == "sorted":
+            x_type = st.multiselect("Sort by", options=list(ARC_X_AXIS_SORTING.keys()), default=["majority class", "fstart"], key=f"sort_type_selector_{repr(exp)}")
+        
+        filtered_features = [f for f in features if (f.type_frm, f.type_to) in allowed_types]
+        st.session_state[f"filtered_feats_{repr(exp)}"] = filtered_features
+        
+        if len(filtered_features) == 0:
+            st.warning("No features of the selected types.")
+            return
+
+        st.write(f"Rendering {len(filtered_features)} features at simplification {simpl}")
+        
+        plot = arc_explorer_plot(filtered_features, x_type)
+        
+        selection_dict = st.altair_chart(plot, use_container_width=True, on_select="rerun")
+        
+        if selection_dict is not None and "selection" in selection_dict and "arcs" in selection_dict["selection"]:
+            st.session_state[f"explorer_selected_arcs_{repr(exp)}"] = [rec["id"] for rec in selection_dict["selection"]["arcs"]]
+        else:
+            st.session_state[f"explorer_selected_arcs_{repr(exp)}"] = []
+            
+    def tree_view(features, allowed_types):
+        
+        with st.container(horizontal=True, horizontal_alignment="center", vertical_alignment="bottom", gap="medium") as c:
+            use_steiner = st.selectbox("Steiner Tree", key=f"steiner_selector_{repr(exp)}", options=["None", "Minima", "Maxima"], index=1, help="Use Steiner tree to include important critical points in the tree view.")
+            saddle_simpl = st.toggle(f"Saddle Simplification", key=f"saddle_simpl_toggle_{repr(exp)}", value=True, help="Remove chains of saddle-saddle connections for a cleaner tree view.")
+        
+        valid_features = [f for f in features if (f.type_frm, f.type_to) in allowed_types]
+
+        if len(valid_features) == 0:
+            st.warning("No features of the selected types.")
+            return
+        
+        if st.button("Recompute Tree Graph", key=f"recompute_tree_graph_{repr(exp)}"):
+            st.session_state[f"tree_graph_{repr(exp)}"] = compute_tree_graph(exp, valid_features, use_steiner, saddle_simpl)
+
+        gnx = st.session_state.get(f"tree_graph_{repr(exp)}", None)
+
+        if gnx is None:
+            st.text("Compute tree graph to begin.")
+            return
+
+        st.text(f"{len(valid_features)} features selected. Rendering {len(gnx.edges)} features after processing.")
+        
+        g = net.Network(height="600px", width="100%", directed=True)
+        g.from_nx(gnx)
+        
+        html = g.generate_html()
+        components.html(html, height=600)
+        
     features: list[RichFeature] | None = st.session_state.get(f"feats_{repr(exp)}", None)
 
     if features is None:
-        st.info("Compute arcs and coverage to explore arcs.")
+        st.info("Compute tree and coverage to begin.")
         return
     
-    simpl: float = st.session_state[f"computed_simpl_{repr(exp)}"]
-        
     types = st.multiselect("Feature types", options=list(ALLOWED_TYPE_SETS.keys()), default=["valleys"], key=f"feature_type_selector_{repr(exp)}")
     
     allowed_types = set()
     for t in types:
         allowed_types = allowed_types.union(ALLOWED_TYPE_SETS.get(t, set()))
-            
-    with st.container(horizontal=True, horizontal_alignment="center") as c:
-        x_type = st.selectbox("X-Axis", options=list(ARC_X_AXIS_TYPE.keys()), index=2, format_func=lambda x: ARC_X_AXIS_TYPE[x], key=f"x_axis_selector_{repr(exp)}")
     
-    if x_type == "sorted":
-        x_type = st.multiselect("Sort by", options=list(ARC_X_AXIS_SORTING.keys()), default=["majority class", "fstart"], key=f"sort_type_selector_{repr(exp)}")
+    arcs, tree = st.tabs(["Arc Explorer", "Tree View"])
     
-    filtered_features = [f for f in features if (f.type_frm, f.type_to) in allowed_types]
-    st.session_state[f"filtered_feats_{repr(exp)}"] = filtered_features
+    with arcs:
+        arc_explorer(features, allowed_types)
     
-    if len(filtered_features) == 0:
-        st.warning("No features of the selected types.")
-        return
-
-    st.write(f"Rendering {len(filtered_features)} features at simplification {simpl}")
-    
-    plot = arc_explorer_plot(filtered_features, x_type)
-    
-    selection_dict = st.altair_chart(plot, use_container_width=True, on_select="rerun")
-    
-    if selection_dict is not None and "selection" in selection_dict and "arcs" in selection_dict["selection"]:
-        st.session_state[f"arc_explorer_selection_{repr(exp)}"] = [rec["id"] for rec in selection_dict["selection"]["arcs"]]
-    else:
-        st.session_state[f"arc_explorer_selection_{repr(exp)}"] = []
+    with tree:
+        tree_view(features, allowed_types)
 
 F2C_VIEWS = ["plain", "correctness", "class-wise confusion"]
 
@@ -142,6 +187,9 @@ def render_coverage_map(exp: LossLandscapeExperiment):
         colors = {cls: class2color(i) for i, cls in enumerate(classes)}
         node2label = exp.dataset.labels_by_split[exp.split]
         preds = st.session_state.get(f"preds_{repr(exp)}", {})
+    
+        if len(feats) == 0:
+            return None
     
         node_feats = set.union(*[set(zip(f.members, [f] * f.size)) for f in feats])
         
@@ -223,22 +271,22 @@ def render_coverage_map(exp: LossLandscapeExperiment):
         return
     
     filtered_features: list[RichFeature] = st.session_state.get(f"filtered_feats_{repr(exp)}", [])
-    selection: list[int] = st.session_state.get(f"arc_explorer_selection_{repr(exp)}", [])
+    selection: list[int] = st.session_state.get(f"explorer_selected_arcs_{repr(exp)}", [])
+    st.session_state[f"dataset_obj_{repr(exp)}"] = st.session_state.get(f"dataset_obj_{repr(exp)}", load_dataset(exp))
+    ds = st.session_state[f"dataset_obj_{repr(exp)}"]
 
     if len(selection) == 0:
         selection = [f.id for f in filtered_features]
-        
-    # UI Controls
-    with st.container(horizontal=True, vertical_alignment="top", horizontal_alignment="left"):
-        fine_grained = st.selectbox("View", key=f"fine_grained_{repr(exp)}", options=F2C_VIEWS, format_func=lambda x: x.title())
-        show_what = st.selectbox("Y-axis", key=f"show_what_{repr(exp)}", options=["Counts", "Proportions", "Coverage"], index=2)
-        freeze_top = st.checkbox("Freeze top", key=f"freeze_top_{repr(exp)}", value=True)
-        
-    f2c, c2f = st.tabs(["Feature to Class", "Class to Feature"])
-    
+
+    f2c, acc, c2f, f2m, datex = st.tabs(["Feature to Class", "Accuracy", "Class to Feature", "Feature to Members", "Data Explorer"])
     selected_features = [features[fid] for fid in selection]
     
     with f2c:        
+        with st.container(horizontal=True, vertical_alignment="top", horizontal_alignment="left"):
+            fine_grained = st.selectbox("View", key=f"fine_grained_{repr(exp)}", options=F2C_VIEWS, format_func=lambda x: x.title())
+            show_what = st.selectbox("Y-axis", key=f"show_what_{repr(exp)}", options=["Counts", "Proportions", "Coverage"], index=2)
+            freeze_top = st.checkbox("Freeze top", key=f"freeze_top_{repr(exp)}", value=True)
+        
         plot = f2c_plot(selected_features, fine_grained, show_what, freeze_top)
         
         if plot is None:
@@ -246,9 +294,73 @@ def render_coverage_map(exp: LossLandscapeExperiment):
         else:
             st.altair_chart(plot, use_container_width=True)
         
+    with acc:
+        total_points = sum([f.size for f in selected_features])
+        correct_points = 0
+        preds = st.session_state.get(f"preds_{repr(exp)}", {})
+        node2label = exp.dataset.labels_by_split[exp.split]
+        
+        for f in selected_features:
+            correct_points += sum([1 for n in f.members if preds[n] == node2label[n]])
+                    
+        accuracy = correct_points / total_points if total_points > 0 else 0.0
+        
+        st.write(f"Accuracy over selected features: **{accuracy * 100.0:0.3f}%** ({correct_points} / {total_points})")
+        
+        confusion = pd.DataFrame(0, index=exp.dataset.classes, columns=exp.dataset.classes)
+        for f in selected_features:
+            for n in f.members:
+                true_cls = exp.dataset.classes[node2label[n]]
+                pred_cls = exp.dataset.classes[preds[n]]
+                confusion.at[true_cls, pred_cls] += 1
+                    
+        heat = alt.Chart(confusion.reset_index().melt(id_vars='index')).mark_rect().encode(
+            x=alt.X('variable:N', title="Predicted Class"),
+            y=alt.Y('index:N', title="True Class"),
+            color=alt.Color('value:Q', scale=alt.Scale(scheme='blues', type="symlog"), title="Number of Points"),
+            tooltip=[alt.Tooltip('value:Q', title="Number of Points"), alt.Tooltip('index:N', title="True Class"), alt.Tooltip('variable:N', title="Predicted Class")]
+        ).properties(
+            width=400,
+            height=400
+        )
+        
+        st.altair_chart(heat, use_container_width=True)
+        
     with c2f:
         st.info("Class to Feature view not implemented yet.")
         
+    with f2m:
+        with st.container(height=600):
+            for f in selected_features:
+                with st.expander(f"**Feature ID {f.id}** (Type: {f.type_string}, Persistence: {f.pers:0.4f}, Size: {f.size}, Majority Class: {exp.dataset.classes[f.majority_class]})"):
+                    st.text(', '.join([str(n) for n in f.members]))
+        
+    with datex:
+        cs_idx = st.text_input("Data Indices (comma-separated)", key=f"data_explorer_indices_{repr(exp)}", value="")
+        if st.button("Load Data Points", key=f"load_data_points_{repr(exp)}"):
+            indices = []
+            for part in cs_idx.split(","):
+                part = part.strip()
+                if part.isdigit():
+                    indices.append(int(part))
+                    
+            if any([i < 0 or i >= len(ds) for i in indices]):
+                st.error("One or more indices are out of bounds.")    
+            else:
+                st.session_state[f"loaded_indices_{repr(exp)}"] = indices
+                st.session_state[f"loaded_data_points_{repr(exp)}"] = [ds[i] for i in indices]
+
+        indices = st.session_state.get(f"loaded_indices_{repr(exp)}", [])
+        datapoints = st.session_state.get(f"loaded_data_points_{repr(exp)}", [])
+
+        st.write(f"Loaded {len(datapoints)} data points.")
+        with st.container(height=600):
+            cols = st.columns(4)
+            for i, (idx, data_point) in enumerate(zip(indices, datapoints)):
+                lbl = exp.dataset.classes[data_point["label"]]
+                with cols[i % 4]:
+                    st.image(data_point['image'].numpy().transpose(1, 2, 0), caption=f"Idx {idx}: {lbl}")
+
 def render_save():
     def save_state():
         os.makedirs("saved_states", exist_ok=True)

@@ -85,3 +85,4 @@ wcwidth==0.2.13
 wheel==0.45.1
 PyYAML==6.0.3
 tensorboard==2.20.0
+pyvis==0.3.2

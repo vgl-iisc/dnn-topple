@@ -44,6 +44,7 @@ class LossLandscapeExperiment:
         self.layer = layer
         self.epoch = epoch
         self.k = k
+        self.paths = None
 
         self.layer_tag = f"{layer}"
         self.epoch_tag = f"e{epoch}"
@@ -56,13 +57,15 @@ class LossLandscapeExperiment:
         return f"{self.model} ({self.dataset.name}-{self.split}), k={self.k}, layer={self.layer}, epoch={self.epoch}"
     
     def get_paths(self, data_dir, ct_dir) -> dict:
-        return {
+        self.paths = {
             "ctree": os.path.join(ct_dir, f"{self.model_data}", self.split, f"ctree_{self.layer_tag}_{self.epoch_tag}_{self.k}"),
             "losses": os.path.join(data_dir, f"{self.model_data}", "Losses", self.split, f"losses_{self.epoch_tag}.txt"),
             "tensors": os.path.join(data_dir, f"{self.model_data}", "Tensors", self.split, f"vectors_{self.layer_tag}_{self.epoch_tag}.txt"),
             "predictions": os.path.join(data_dir, f"{self.model_data}", "Predictions", self.split, f"predictions_{self.epoch_tag}.txt"),
             "compiled_res": os.path.join(data_dir, f"{self.model_data}", "compiled_results.csv"),
         }
+        
+        return self.paths 
     
     def validate_paths(self, data_dir, ct_dir) -> bool:
         paths = self.get_paths(data_dir, ct_dir)

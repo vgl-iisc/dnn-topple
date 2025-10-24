@@ -23,7 +23,7 @@ import pickle
 
 from experiment import Dataset, LossLandscapeExperiment, find_all_datasets, find_all_experiments
 from vis_utils import find_steady_simplification_states, compute_arc_features, compute_feature_map, load_preds, compute_feature_coverage_data
-from components import render_arc_explorer, render_coverage_map, render_save
+from components import render_tree_explorer, render_coverage_map, render_save
 
 path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts')))
 from chart_simplification_valleys import get_valley_vs_thresh
@@ -82,6 +82,7 @@ def float_input(key: str, label: str, default: float, min_value = None, max_valu
 
 def render_experiment(exp: LossLandscapeExperiment, half_width: bool):
 
+    # TODO: graph this with an optional selection handle to simplify simplification selection
     with st.expander("Steady State Finder", expanded=False):
         state_tol = float_input(key=f"tol_steady_{repr(exp)}", label="Steady Simplification State Coverage Threshold", default=0.002, min_value=0.0, max_value=100.0, step=0.001,
                                 help="Minimum proportion of the range of thresholds for which the number of minima should remain constant for a simplification to be considered steady.")
@@ -118,24 +119,24 @@ def render_experiment(exp: LossLandscapeExperiment, half_width: bool):
     if simpl_key not in st.session_state:
         st.session_state[simpl_key] = simpl_def
 
-    simpl = st.number_input("Select Simplification Threshold", max_value=max_wt, step=0.0001, key=simpl_key, format="%0.32f")
+    simpl = st.number_input("Simplification Threshold", max_value=max_wt, step=0.0001, key=simpl_key, format="%0.32f")
 
     with st.container(horizontal=True, horizontal_alignment="center") as c:
         st.button("Reset Simplification", on_click=lambda: st.session_state.update({simpl_key: simpl_def}), key=f"reset_button_{repr(exp)}")
 
-        if st.button("Compute Arcs and Coverage", key=f"compute_button_{repr(exp)}"):
+        if st.button("Compute Tree and Coverage", key=f"compute_button_{repr(exp)}"):
             compute_arcs_and_coverage(exp, simpl)
 
     if half_width:
-        arc_container = st.container()
+        tree_container = st.container()
         cov_container = st.container()
     else:
-        arc_container, cov_container = st.columns([3, 2])
+        tree_container, cov_container = st.columns([3, 2])
 
-    with arc_container:
-        st.subheader("Arc Explorer")
+    with tree_container:
+        st.subheader("Tree Explorer")
 
-        render_arc_explorer(exp)
+        render_tree_explorer(exp)
 
     with cov_container:
         st.subheader("Coverage Map")
@@ -147,9 +148,9 @@ def get_steady_simplification_states(exp: LossLandscapeExperiment, tol: float) -
     
     thresh, num_min = get_valley_vs_thresh(paths["ctree"])
     steady_thresh, steady_minima = find_steady_simplification_states(thresh, num_min, tol)
-    
+
     return steady_thresh, steady_minima
-    
+
 def main():
     if len(argv) < 4:
         print("Usage: streamlit run vis/app.py <ct_dir> <landscapes_dir> <datasets_dir>")

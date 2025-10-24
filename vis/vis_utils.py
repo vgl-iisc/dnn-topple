@@ -5,6 +5,9 @@ import pandas as pd
 import numpy as np
 import pyct as ct
 
+from pyvis import network as net
+import networkx as nx
+
 import os
 
 def find_steady_simplification_states(thresh: list[float], num_min: list[int], tol: float = 0.05) -> tuple[list[tuple[float, float]], list[int]]:
@@ -109,6 +112,121 @@ def compute_arc_features(exp: LossLandscapeExperiment, simpl: float):
     features = [RichFeature(id, f, data) for id, f in enumerate(topo.getArcFeatures(-1, simpl)[0])]
 
     return features
+
+CP_COLORING = {
+    ct.MINIMUM: "#1f77b4",
+    ct.SADDLE: "#ff7f0e",
+    ct.MAXIMUM: "#ca2e29",
+    ct.REGULAR: "#d822df",
+}
+
+def simpl_saddles(nxg: nx.DiGraph):
+    snodes = sorted(list(nxg.nodes), key=lambda n: nxg.nodes[n]["fn_val"])
+    
+    chains = []
+    visited = set()
+    
+    for n in snodes:
+        if n in visited:
+            continue
+        
+        visited.add(n)
+        if nxg.nodes[n]["cp_type"] != ct.SADDLE or nxg.in_degree(n) != 1 or nxg.out_degree(n) != 1:
+            continue
+        
+        cur = n
+        edges = []
+        
+        while True:
+            preds = list(nxg.predecessors(cur))
+            succs = list(nxg.successors(cur))
+            visited.add(cur)
+            
+            if len(preds) != 1 or len(succs) != 1:
+                break
+
+            succ = succs[0]
+            edges.append((cur, succ, nxg.edges[cur, succ]))
+            
+            if nxg.nodes[succ]["cp_type"] != ct.SADDLE:
+                break
+            
+            cur = succ
+            
+        if len(edges) > 0:
+            chains.append((n, cur, edges))
+            
+    for start, end, edges in chains:        
+        total_pers = sum([e[2]["persistence"] for e in edges])
+        total_vol = sum([e[2]["volume"] for e in edges])
+        majority_class = edges[0][2]["majority"]
+        fid = ",".join([str(e[2]["feature_id"]) for e in edges])
+    
+        pred = next(nxg.predecessors(start))
+    
+        nxg.add_edge(
+            pred,
+            end,
+            label=f"{majority_class} ({total_vol})",
+            title=f"Simplified Chain ({fid})\nTotal Persistence: {total_pers}\nTotal Volume: {total_vol}\nMajority: {majority_class}",
+            color="#888888",
+            width=2,
+            feature_id=fid,
+            persistence=float(total_pers),
+            volume=int(total_vol),
+            majority=majority_class,
+        )
+        
+        for u, v, _ in edges:            
+            nxg.remove_node(u)
+
+def compute_tree_graph(exp: LossLandscapeExperiment, features: list[RichFeature], use_steiner: str, simplify_saddles: bool):
+    useful_nodes = set()
+    minima_nodes = set()
+    maxima_nodes = set()
+    for i, f in enumerate(features):
+        useful_nodes.add((f.frm, f.type_frm, f.fn_frm, CP_COLORING[f.type_frm]))
+        useful_nodes.add((f.to, f.type_to, f.fn_to, CP_COLORING[f.type_to]))
+        
+        if f.type_frm == ct.MINIMUM:
+            minima_nodes.add(f.frm)
+        
+        if f.type_to == ct.MAXIMUM:
+            maxima_nodes.add(f.to)
+
+    
+    nxg = nx.DiGraph()
+    for node_id, node_type, node_fn, node_color in useful_nodes:
+        cls = exp.dataset.classes[exp.dataset.labels_by_split[exp.split][node_id]]
+        nxg.add_node(node_id, label=cls, color=node_color, cp_type=node_type, fn_val=node_fn, title=f"ID: {node_id}\nLoss: {node_fn}\nClass: {cls}")
+
+    for i, f in enumerate(features):
+        class_label = exp.dataset.classes[f.majority_class]
+        nxg.add_edge(
+        f.frm,
+        f.to,
+        label=f"{class_label} ({f.size})",
+        title=f"ID: {f.id}\nPersistence: {f.pers}\nVolume: {f.size}\nMajority: {class_label}",
+        color="#888888",
+        width=2,
+        feature_id=f.id,
+        persistence=float(f.pers),
+        volume=int(f.size),
+        majority=class_label,
+        )
+
+    if use_steiner != "None":
+        steiner_v = list(minima_nodes) if use_steiner == "Minima" else list(maxima_nodes)
+        nxg_undir = nx.algorithms.approximation.steiner_tree(nxg.to_undirected(), steiner_v, weight="edge_count")
+        nxg = nxg.subgraph(nxg_undir.nodes).to_directed()
+        
+
+    if not simplify_saddles:
+        return nxg
+
+    simpl_saddles(nxg)
+
+    return nxg
 
 def make_arc_map(features: list[RichFeature]):
     arc_map = {}
