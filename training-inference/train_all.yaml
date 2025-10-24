@@ -1,5 +1,5 @@
 datasets: 
-  cifar10: ./datasets/cifar10/data
+  cifar: ./datasets/cifar/data
   mnist: ./datasets/mnist/data
 
 do:
@@ -13,7 +13,7 @@ do:
   - wres_mnist
 
 config:
-  tensorboard_dir: C:/home/llvis/model_training/tensorboard
-  checkpoint_dir: C:/home/llvis/model_training/checkpoints
+  tensorboard_dir: /media/solis/DATA/Santripta/Training/tensorboard
+  checkpoint_dir: /media/solis/DATA/Santripta/Training/checkpoints
   experiments_dir: ./training-inference/train_runs
   device: cuda

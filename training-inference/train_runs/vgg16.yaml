@@ -1,7 +1,7 @@
 runs:
   vgg_cifar:
     seed: 1759764288
-    dataset: cifar10
+    dataset: cifar
     epochs: 50
 
   vgg_mnist:

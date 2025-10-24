@@ -1,7 +1,7 @@
 runs:
   densenet_cifar:
     seed: 1759764157
-    dataset: cifar10
+    dataset: cifar
     epochs: 50
 
   densenet_mnist:

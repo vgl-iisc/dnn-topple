@@ -1,7 +1,7 @@
 runs:
   resnet_cifar:
     seed: 1759764376
-    dataset: cifar10
+    dataset: cifar
     epochs: 50
 
   resnet_mnist:

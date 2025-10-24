@@ -1,9 +1,9 @@
 datasets: 
-  cifar10: ./datasets/cifar10/data
+  cifar: ./datasets/cifar/data
   mnist: ./datasets/mnist/data
 
 epochs:
-  cifar10: 
+  cifar: 
     - best
     - [0, 51, 3]
   mnist: 
@@ -29,7 +29,7 @@ collect:
 runs:
   densenet_cifar:
     model: densenet121
-    dataset: cifar10
+    dataset: cifar
 
   densenet_mnist:
     model: densenet121
@@ -37,7 +37,7 @@ runs:
 
   resnet_cifar:
     model: resnet18
-    dataset: cifar10
+    dataset: cifar
 
   resnet_mnist:
     model: resnet18
@@ -45,7 +45,7 @@ runs:
 
   vgg_cifar:
     model: vgg16
-    dataset: cifar10
+    dataset: cifar
 
   vgg_mnist:
     model: vgg16
@@ -53,22 +53,22 @@ runs:
 
   wres_cifar:
     model: wide_resnet50_2
-    dataset: cifar10
+    dataset: cifar
 
   wres_mnist:
     model: wide_resnet50_2
     dataset: mnist
 
 do:
-  - densenet_cifar
-  - densenet_mnist
-  - resnet_cifar
-  - resnet_mnist
-  - vgg_cifar
-  - vgg_mnist
-  - wres_cifar
+  # - densenet_cifar
+  # - densenet_mnist
+  # - resnet_cifar
+  # - resnet_mnist
+  # - vgg_cifar
+  # - vgg_mnist
+  # - wres_cifar
   - wres_mnist
 
-checkpoints_dir: C:/home/llvis/trained_models/
-save_dir: data/landscape_data_penultimate/
+checkpoints_dir: /media/santripta/data2/Training/trained_models/
+save_dir: /media/santripta/data2/Inference/landscape_data_cross_layer/
 device: cuda

@@ -1,7 +1,7 @@
 runs:
   wres_cifar:
     seed: 1759764369
-    dataset: cifar10
+    dataset: cifar
     epochs: 50
 
   wres_mnist:

@@ -40,7 +40,7 @@ def extract_batch(batch):
 
 def get_dataloaders(dataset, data_root):
 	
-	if dataset == 'cifar10':
+	if dataset == 'cifar10' or dataset == 'cifar':
 		_, test_tf = cifar10_loader.get_cifar10_transforms()
 		train_loader, test_loader = cifar10_loader.make_cifar10_dataloaders(
 			data_root, batch_size=1, transform=test_tf, shuffle=False
@@ -140,7 +140,7 @@ def do_run(dataset, data_root, arch, checkpoints_dir, collection, epochs, output
 		avg_loss = output["loss"]
 		accuracy = output["accuracy"]
 		
-		with open(os.path.join(output_root, f"metrics_e{epoch}")) as f:
+		with open(os.path.join(output_root, f"metrics_e{epoch}"), "w") as f:
 			f.write(f"avg loss: {avg_loss}\naccuracy: {accuracy}\n")
   
 		collected_losses = np.array(output['losses'], dtype=np.float64).reshape(-1, 1)
