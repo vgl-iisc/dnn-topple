@@ -64,6 +64,7 @@ def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output
     print("Computed contour tree.")
 
     outfile = os.path.join(output_directory, f"{name}")
+    # TODO: make this an option
     contour_tree.output(outfile, ct.TreeType.TypeSplitTree)
     
     print(f"Saved contour tree to {output_directory}.")

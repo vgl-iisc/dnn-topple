@@ -105,8 +105,13 @@ class RichFeature:
 def compute_arc_features(exp: LossLandscapeExperiment, simpl: float):
     ctree_name = exp.get_paths(st.session_state.landscapes_dir, st.session_state.ct_dir)["ctree"]
     
+    print("topofeats")
+    
     topo = ct.TopologicalFeatures()
     topo.loadData(ctree_name)
+
+    simpl = 0.0
+    print("done")
 
     data = topo.ctdata
     features = [RichFeature(id, f, data) for id, f in enumerate(topo.getArcFeatures(-1, simpl)[0])]
