@@ -23,7 +23,7 @@ import pickle
 
 from experiment import Dataset, LossLandscapeExperiment, find_all_datasets, find_all_experiments
 from vis_utils import find_steady_simplification_states, compute_arc_features, compute_feature_map, load_preds, compute_feature_coverage_data
-from components import render_tree_explorer, render_coverage_map, render_save
+from components import render_tree_explorer, render_coverage_map, render_experiment_selector
 
 path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts')))
 from chart_simplification_valleys import get_valley_vs_thresh
@@ -34,21 +34,22 @@ def find_available_experiments():
     experiments = find_all_experiments(datasets, st.session_state.landscapes_dir, st.session_state.ct_dir)
     return datasets, experiments
 
-def clear_features(exp: LossLandscapeExperiment):
-    st.session_state[f"feats_{repr(exp)}"] = None
+def clear_features(id: int):
+    st.session_state[f"feats_{id}"] = None
 
-def compute_arcs_and_coverage(exp: LossLandscapeExperiment, simpl: float):
-    clear_features(exp)
+def compute_arcs_and_coverage(id: int, simpl: float):
     
-    st.session_state[f"computed_simpl_{repr(exp)}"] = simpl
+    exp = st.session_state.get(f"selected_experiment_{id}", None)
+    clear_features(id)
+    st.session_state[f"computed_simpl_{id}"] = simpl
     
     with st.spinner(f"Computing arcs and coverage at simplification {simpl}..."):
         feats = compute_arc_features(exp, simpl)
-        st.session_state[f"feats_{repr(exp)}"] = feats
+        st.session_state[f"feats_{id}"] = feats
         node2feat = compute_feature_map(exp, feats)
-        st.session_state[f"node2feat_{repr(exp)}"] = node2feat
+        st.session_state[f"node2feat_{id}"] = node2feat
         preds = load_preds(exp)
-        st.session_state[f"preds_{repr(exp)}"] = preds
+        st.session_state[f"preds_{id}"] = preds
         compute_feature_coverage_data(exp, feats, preds)
         
 # TODO: one idea would be to lift all keys into lambda functions so they are only evaluated when needed, and consistent throughout
@@ -80,29 +81,47 @@ def float_input(key: str, label: str, default: float, min_value = None, max_valu
 
     return fval
 
-def render_experiment(exp: LossLandscapeExperiment, half_width: bool):
+# TODO: we'd really like to fragment, but there's a really strange bug that makes the app unusable, so for now we just use a normal function
+# @st.fragment
+def render_experiment(id: int, half_width: bool):
+
+    _, experiments = find_available_experiments()
+    
+    a, b = st.columns([20, 1], vertical_alignment="bottom", gap="small")
+    with a:
+        # exp = st.selectbox("Select Experiment", options=[None] + experiments, format_func=lambda e: repr(e) if e is not None else "Select an experiment", key=f"selected_experiment_{id}")
+        exp = render_experiment_selector(id, experiments)
+    with b:
+        with st.container(horizontal_alignment="right"):
+            st.button("X", on_click=lambda: st.session_state.exp_ids.remove(id), key=f"remove_experiment_button_{id}")
+    
+    if exp is None:
+        st.warning("No experiment selected.")
+        return
+    
+    st.session_state[f"selected_experiment_{id}"] = exp
 
     # TODO: graph this with an optional selection handle to simplify simplification selection
     with st.expander("Steady State Finder", expanded=False):
-        state_tol = float_input(key=f"tol_steady_{repr(exp)}", label="Steady Simplification State Coverage Threshold", default=0.002, min_value=0.0, max_value=100.0, step=0.001,
+        state_tol = float_input(key=f"tol_steady_{id}", label="Steady Simplification State Coverage Threshold", default=0.002, min_value=0.0, max_value=100.0, step=0.001,
                                 help="Minimum proportion of the range of thresholds for which the number of minima should remain constant for a simplification to be considered steady.")
         
         try:
             state_tol = float(state_tol)
         except ValueError:
             st.error("Tolerance must be a valid number.")
-            st.session_state[f"tol_steady_{repr(exp)}"] = "0.002"
+            st.session_state[f"tol_steady_{id}"] = "0.002"
             state_tol = 0.002
             
         if state_tol < 0.0 or state_tol > 100.0:
             st.error("Tolerance must be between 0 and 100.")
-            st.session_state[f"tol_steady_{repr(exp)}"] = "0.002"
+            st.session_state[f"tol_steady_{id}"] = "0.002"
             state_tol = 0.002
         
         steady_thresh, steady_minima = get_steady_simplification_states(exp, state_tol / 100.0)
         
-        if f"feats_{repr(exp)}" not in st.session_state:
-            st.session_state[f"feats_{repr(exp)}"] = None
+        if f"feats_{id}" not in st.session_state:
+            st.session_state[f"feats_{id}"] = None
         
         max_wt = get_steady_simplification_states(exp, 0.0)[0][-1][1]
 
@@ -114,7 +133,7 @@ def render_experiment(exp: LossLandscapeExperiment, half_width: bool):
 
     # pick start+eps of first steady state as default simplification ("denoising" justification)
     simpl_def = steady_thresh[0][0] + (steady_thresh[0][1] - steady_thresh[0][0]) / 100 if len(steady_thresh) > 0 else max_wt / 2.0
-    simpl_key = f"simpl_thresh_{repr(exp)}"
+    simpl_key = f"simpl_thresh_{id}"
 
     if simpl_key not in st.session_state:
         st.session_state[simpl_key] = simpl_def
@@ -122,10 +141,10 @@ def render_experiment(exp: LossLandscapeExperiment, half_width: bool):
     simpl = st.number_input("Simplification Threshold", max_value=max_wt, step=0.0001, key=simpl_key, format="%0.32f")
 
     with st.container(horizontal=True, horizontal_alignment="center") as c:
-        st.button("Reset Simplification", on_click=lambda: st.session_state.update({simpl_key: simpl_def}), key=f"reset_button_{repr(exp)}")
+        st.button("Reset Simplification", on_click=lambda: st.session_state.update({simpl_key: simpl_def}), key=f"reset_button_{id}")
 
-        if st.button("Compute Tree and Coverage", key=f"compute_button_{repr(exp)}"):
-            compute_arcs_and_coverage(exp, simpl)
+        if st.button("Compute Tree and Coverage", key=f"compute_button_{id}"):
+            compute_arcs_and_coverage(id, simpl)
 
     if half_width:
         tree_container = st.container()
@@ -136,12 +155,12 @@ def render_experiment(exp: LossLandscapeExperiment, half_width: bool):
     with tree_container:
         st.subheader("Tree Explorer")
 
-        render_tree_explorer(exp)
+        render_tree_explorer(id)
 
     with cov_container:
         st.subheader("Coverage Map")
 
-        render_coverage_map(exp)
+        render_coverage_map(id)
 
 def get_steady_simplification_states(exp: LossLandscapeExperiment, tol: float) -> tuple[list[tuple[float, float]], list[int]]:
     paths = exp.get_paths(st.session_state.landscapes_dir, st.session_state.ct_dir)
@@ -192,22 +211,37 @@ def main():
 
     col1, col2 = st.columns([5, 1], vertical_alignment="bottom")
     
+    if st.session_state.get("last_exp_id", None) is None:
+        st.session_state.last_exp_id = -1
+    
+    if st.session_state.get("exp_ids", None) is None:
+        st.session_state.exp_ids = []
+   
+    def add_exp():
+        st.session_state.last_exp_id += 1
+        st.session_state.exp_ids.append(st.session_state.last_exp_id)
+    
     with col1:
-        st.session_state.selected_experiments = st.multiselect("Select experiments", options=experiments, format_func=lambda d: repr(d), key="experiment_selector")
+        st.button("Add Experiment", on_click=add_exp, key="add_experiment_button")
     
     with col2:
         st.session_state.comparison_mode = st.checkbox("Comparison Mode", value=True, help="Render groups of experiments side-by-side for easier comparison.", key="comparison_mode_checkbox")
 
-    if st.session_state.selected_experiments is None or len(st.session_state.selected_experiments) == 0:
-        st.info("Select one or more experiments to begin exploring the corresponding loss landscapes.")
+    if len(st.session_state.exp_ids) == 0:
+        st.info("Add experiments to begin exploring the corresponding loss landscapes.")
         return
     
+    def id2title(id: int) -> str:
+        exp = st.session_state.get(f"selected_experiment_{id}", None)
+        
+        return repr(exp) if exp is not None else f"Unselected Experiment"
+    
     if st.session_state.comparison_mode:
-        for i in range(0, len(st.session_state.selected_experiments), 2):
-            first = st.session_state.selected_experiments[i]
-            second = st.session_state.selected_experiments[i+1] if i+1 < len(st.session_state.selected_experiments) else None
-
-            title_text = f"{repr(first)}" if second is None else f"{repr(first)} **||** {repr(second)}"
+        for i in range(0, len(st.session_state.exp_ids), 2):
+            first = st.session_state.exp_ids[i]
+            second = st.session_state.exp_ids[i+1] if i+1 < len(st.session_state.exp_ids) else None
+            
+            title_text = f"{id2title(first)}" if second is None else f"{id2title(first)} **||** {id2title(second)}"
             with st.expander(title_text, expanded=True):
                 if second is None:
                     with st.container():
@@ -219,8 +253,8 @@ def main():
                     with cols[1]:
                         render_experiment(second, half_width=True)
     else:
-        for exp in st.session_state.selected_experiments:
-            with st.expander(repr(exp), expanded=True):
+        for exp in st.session_state.exp_ids:
+            with st.expander(id2title(exp), expanded=True):
                 render_experiment(exp, half_width=False)
 
 

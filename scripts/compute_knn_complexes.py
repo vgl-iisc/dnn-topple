@@ -14,14 +14,14 @@ import networkx as nx
 
 def main():
     if len(argv) != 4 and len(argv) != 5:
-        print("Usage: python compute_knn_complexes.py <data_dir> <complexes_dir> <max_k> [exact_k]")
+        print("Usage: python compute_knn_complexes.py <data_dir> <complexes_dir> <max_k> [search_k]")
         return
     
     data_dir = argv[1]
     complexes_dir = argv[2]
     max_k = int(argv[3])
     
-    exact = len(argv) == 5
+    exact = len(argv) != 5
 
     for root, dirs, files in os.walk(data_dir):
         if not "Tensors" in root:

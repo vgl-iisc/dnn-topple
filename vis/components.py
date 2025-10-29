@@ -5,7 +5,7 @@ import pyvis.network as net
 
 import os
 
-from experiment import LossLandscapeExperiment
+from experiment import LossLandscapeExperiment, Dataset
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -41,7 +41,9 @@ ALLOWED_TYPE_SETS = {
                 (ct.SADDLE, ct.REGULAR), (ct.MINIMUM, ct.REGULAR), (ct.MAXIMUM, ct.REGULAR)},
 }
 
-def render_tree_explorer(exp: LossLandscapeExperiment):
+def render_tree_explorer(id: int):
+    
+    exp = st.session_state.get(f"selected_experiment_{id}", None)
     
     def arc_explorer_plot(features: list[RichFeature], axis_type: str | list[str]) -> alt.Chart:
         
@@ -103,16 +105,16 @@ def render_tree_explorer(exp: LossLandscapeExperiment):
         return plot
     
     def arc_explorer(features, allowed_types):
-        simpl: float = st.session_state[f"computed_simpl_{repr(exp)}"]
+        simpl: float = st.session_state[f"computed_simpl_{id}"]
                         
         with st.container(horizontal=True, horizontal_alignment="center") as c:
-            x_type = st.selectbox("X-Axis", options=list(ARC_X_AXIS_TYPE.keys()), index=2, format_func=lambda x: ARC_X_AXIS_TYPE[x], key=f"x_axis_selector_{repr(exp)}")
+            x_type = st.selectbox("X-Axis", options=list(ARC_X_AXIS_TYPE.keys()), index=2, format_func=lambda x: ARC_X_AXIS_TYPE[x], key=f"x_axis_selector_{id}")
         
         if x_type == "sorted":
-            x_type = st.multiselect("Sort by", options=list(ARC_X_AXIS_SORTING.keys()), default=["majority class", "fstart"], key=f"sort_type_selector_{repr(exp)}")
+            x_type = st.multiselect("Sort by", options=list(ARC_X_AXIS_SORTING.keys()), default=["majority class", "fstart"], key=f"sort_type_selector_{id}")
         
         filtered_features = [f for f in features if (f.type_frm, f.type_to) in allowed_types]
-        st.session_state[f"filtered_feats_{repr(exp)}"] = filtered_features
+        st.session_state[f"filtered_feats_{id}"] = filtered_features
         
         if len(filtered_features) == 0:
             st.warning("No features of the selected types.")
@@ -122,18 +124,20 @@ def render_tree_explorer(exp: LossLandscapeExperiment):
         
         plot = arc_explorer_plot(filtered_features, x_type)
         
-        selection_dict = st.altair_chart(plot, use_container_width=True, on_select="rerun")
+        selection_dict = st.altair_chart(plot, use_container_width=True, on_select="rerun", key=f"arc_explorer_plot_{id}")
         
         if selection_dict is not None and "selection" in selection_dict and "arcs" in selection_dict["selection"]:
-            st.session_state[f"explorer_selected_arcs_{repr(exp)}"] = [rec["id"] for rec in selection_dict["selection"]["arcs"]]
+            st.session_state[f"explorer_selected_arcs_{id}"] = [rec["id"] for rec in selection_dict["selection"]["arcs"]]
         else:
-            st.session_state[f"explorer_selected_arcs_{repr(exp)}"] = []
+            st.session_state[f"explorer_selected_arcs_{id}"] = []
             
     def tree_view(features, allowed_types):
         
         with st.container(horizontal=True, horizontal_alignment="center", vertical_alignment="bottom", gap="medium") as c:
-            use_steiner = st.selectbox("Steiner Tree", key=f"steiner_selector_{repr(exp)}", options=["None", "Minima", "Maxima"], index=1, help="Use Steiner tree to include important critical points in the tree view.")
-            saddle_simpl = st.toggle(f"Saddle Simplification", key=f"saddle_simpl_toggle_{repr(exp)}", value=True, help="Remove chains of saddle-saddle connections for a cleaner tree view.")
+            use_steiner = st.selectbox("Steiner Tree", key=f"steiner_selector_{id}", options=["None", "Minima", "Maxima"], index=1, help="Use Steiner tree to include important critical points in the tree view.")
+            # TODO: saddle simplification is killing arcs, need to fix that
+            # saddle_simpl = st.toggle(f"Saddle Simplification", key=f"saddle_simpl_toggle_{id}", value=False, help="Remove chains of saddle-saddle connections for a cleaner tree view.")
+            saddle_simpl = False
         
         valid_features = [f for f in features if (f.type_frm, f.type_to) in allowed_types]
 
@@ -141,10 +145,10 @@ def render_tree_explorer(exp: LossLandscapeExperiment):
             st.warning("No features of the selected types.")
             return
         
-        if st.button("Recompute Tree Graph", key=f"recompute_tree_graph_{repr(exp)}"):
-            st.session_state[f"tree_graph_{repr(exp)}"] = compute_tree_graph(exp, valid_features, use_steiner, saddle_simpl)
+        if st.button("Recompute Tree Graph", key=f"recompute_tree_graph_{id}"):
+            st.session_state[f"tree_graph_{id}"] = compute_tree_graph(exp, valid_features, use_steiner, saddle_simpl)
 
-        gnx = st.session_state.get(f"tree_graph_{repr(exp)}", None)
+        gnx = st.session_state.get(f"tree_graph_{id}", None)
 
         if gnx is None:
             st.text("Compute tree graph to begin.")
@@ -158,13 +162,13 @@ def render_tree_explorer(exp: LossLandscapeExperiment):
         html = g.generate_html()
         components.html(html, height=600)
         
-    features: list[RichFeature] | None = st.session_state.get(f"feats_{repr(exp)}", None)
+    features: list[RichFeature] | None = st.session_state.get(f"feats_{id}", None)
 
     if features is None:
         st.info("Compute tree and coverage to begin.")
         return
     
-    types = st.multiselect("Feature types", options=list(ALLOWED_TYPE_SETS.keys()), default=["valleys"], key=f"feature_type_selector_{repr(exp)}")
+    types = st.multiselect("Feature types", options=list(ALLOWED_TYPE_SETS.keys()), default=["valleys"], key=f"feature_type_selector_{id}")
     
     allowed_types = set()
     for t in types:
@@ -180,13 +184,15 @@ def render_tree_explorer(exp: LossLandscapeExperiment):
 
 F2C_VIEWS = ["plain", "correctness", "class-wise confusion"]
 
-def render_coverage_map(exp: LossLandscapeExperiment):
+def render_coverage_map(id: int):
+    
+    exp = st.session_state.get(f"selected_experiment_{id}", None)
     
     def f2c_plot(feats: list[RichFeature], view: str, show_what: str, freeze_top: bool) -> alt.Chart | None:
         classes = exp.dataset.classes
         colors = {cls: class2color(i) for i, cls in enumerate(classes)}
         node2label = exp.dataset.labels_by_split[exp.split]
-        preds = st.session_state.get(f"preds_{repr(exp)}", {})
+        preds = st.session_state.get(f"preds_{id}", {})
     
         if len(feats) == 0:
             return None
@@ -264,16 +270,16 @@ def render_coverage_map(exp: LossLandscapeExperiment):
         return plot
         
     
-    features: list[RichFeature] | None = st.session_state.get(f"feats_{repr(exp)}", None)
+    features: list[RichFeature] | None = st.session_state.get(f"feats_{id}", None)
     
     if features is None:
         st.info("Compute arcs and coverage to explore coverage map.")
         return
     
-    filtered_features: list[RichFeature] = st.session_state.get(f"filtered_feats_{repr(exp)}", [])
-    selection: list[int] = st.session_state.get(f"explorer_selected_arcs_{repr(exp)}", [])
-    st.session_state[f"dataset_obj_{repr(exp)}"] = st.session_state.get(f"dataset_obj_{repr(exp)}", load_dataset(exp))
-    ds = st.session_state[f"dataset_obj_{repr(exp)}"]
+    filtered_features: list[RichFeature] = st.session_state.get(f"filtered_feats_{id}", [])
+    selection: list[int] = st.session_state.get(f"explorer_selected_arcs_{id}", [])
+    st.session_state[f"dataset_obj_{id}"] = st.session_state.get(f"dataset_obj_{id}", load_dataset(exp))
+    ds = st.session_state[f"dataset_obj_{id}"]
 
     if len(selection) == 0:
         selection = [f.id for f in filtered_features]
@@ -283,21 +289,21 @@ def render_coverage_map(exp: LossLandscapeExperiment):
     
     with f2c:        
         with st.container(horizontal=True, vertical_alignment="top", horizontal_alignment="left"):
-            fine_grained = st.selectbox("View", key=f"fine_grained_{repr(exp)}", options=F2C_VIEWS, format_func=lambda x: x.title())
-            show_what = st.selectbox("Y-axis", key=f"show_what_{repr(exp)}", options=["Counts", "Proportions", "Coverage"], index=2)
-            freeze_top = st.checkbox("Freeze top", key=f"freeze_top_{repr(exp)}", value=True)
+            fine_grained = st.selectbox("View", key=f"fine_grained_{id}", options=F2C_VIEWS, format_func=lambda x: x.title())
+            show_what = st.selectbox("Y-axis", key=f"show_what_{id}", options=["Counts", "Proportions", "Coverage"], index=2)
+            freeze_top = st.checkbox("Freeze top", key=f"freeze_top_{id}", value=True)
         
         plot = f2c_plot(selected_features, fine_grained, show_what, freeze_top)
         
         if plot is None:
             st.warning("No datapoints in selection.")
         else:
-            st.altair_chart(plot, use_container_width=True)
+            st.altair_chart(plot, use_container_width=True, key=f"f2c_plot_{id}")
         
     with acc:
         total_points = sum([f.size for f in selected_features])
         correct_points = 0
-        preds = st.session_state.get(f"preds_{repr(exp)}", {})
+        preds = st.session_state.get(f"preds_{id}", {})
         node2label = exp.dataset.labels_by_split[exp.split]
         
         for f in selected_features:
@@ -324,7 +330,7 @@ def render_coverage_map(exp: LossLandscapeExperiment):
             height=400
         )
         
-        st.altair_chart(heat, use_container_width=True)
+        st.altair_chart(heat, use_container_width=True, key=f"confusion_heatmap_{id}")
         
     with c2f:
         st.info("Class to Feature view not implemented yet.")
@@ -336,8 +342,8 @@ def render_coverage_map(exp: LossLandscapeExperiment):
                     st.text(', '.join([str(n) for n in f.members]))
         
     with datex:
-        cs_idx = st.text_input("Data Indices (comma-separated)", key=f"data_explorer_indices_{repr(exp)}", value="")
-        if st.button("Load Data Points", key=f"load_data_points_{repr(exp)}"):
+        cs_idx = st.text_input("Data Indices (comma-separated)", key=f"data_explorer_indices_{id}", value="")
+        if st.button("Load Data Points", key=f"load_data_points_{id}"):
             indices = []
             for part in cs_idx.split(","):
                 part = part.strip()
@@ -347,11 +353,11 @@ def render_coverage_map(exp: LossLandscapeExperiment):
             if any([i < 0 or i >= len(ds) for i in indices]):
                 st.error("One or more indices are out of bounds.")    
             else:
-                st.session_state[f"loaded_indices_{repr(exp)}"] = indices
-                st.session_state[f"loaded_data_points_{repr(exp)}"] = [ds[i] for i in indices]
+                st.session_state[f"loaded_indices_{id}"] = indices
+                st.session_state[f"loaded_data_points_{id}"] = [ds[i] for i in indices]
 
-        indices = st.session_state.get(f"loaded_indices_{repr(exp)}", [])
-        datapoints = st.session_state.get(f"loaded_data_points_{repr(exp)}", [])
+        indices = st.session_state.get(f"loaded_indices_{id}", [])
+        datapoints = st.session_state.get(f"loaded_data_points_{id}", [])
 
         st.write(f"Loaded {len(datapoints)} data points.")
         with st.container(height=600):
@@ -361,6 +367,55 @@ def render_coverage_map(exp: LossLandscapeExperiment):
                 with cols[i % 4]:
                     st.image(data_point['image'].numpy().transpose(1, 2, 0), caption=f"Idx {idx}: {lbl}")
 
+def render_experiment_selector(id: int, experiments: list[LossLandscapeExperiment]):
+    
+    possible_experiments = experiments
+    possible_datasets = list(set(map(lambda exp: exp.dataset.name, possible_experiments)))
+    
+    with st.container(horizontal=True, vertical_alignment="center", gap="medium") as c:
+        selected_dataset = st.selectbox("Dataset", options=["None"] + possible_datasets, key=f"experiment_dataset_selector_{id}")
+        
+        if selected_dataset == "None":
+            return 
+        
+        possible_splits = list(set([exp.split for exp in possible_experiments if exp.dataset.name == selected_dataset]))
+        selected_split = st.selectbox("Split", options=["None"] + possible_splits, key=f"experiment_split_selector_{id}")
+        
+        if selected_split == "None":
+            return
+        
+        possible_models = list(set([exp.model for exp in possible_experiments if exp.dataset.name == selected_dataset and exp.split == selected_split]))
+        selected_model = st.selectbox("Model", options=["None"] + possible_models, key=f"experiment_model_selector_{id}")
+        
+        if selected_model == "None":
+            return
+        
+        # possible_ks = list(set([exp.k for exp in possible_experiments if exp.dataset.name == selected_dataset and exp.split == selected_split and exp.model == selected_model]))
+        # selected_k = st.selectbox("k", options=["None"] + possible_ks, key=f"experiment_k_selector_{id}")
+        selected_k = 20
+        
+        # if selected_k == "None":
+        #     return
+
+        possible_epochs = sorted(list(set([exp.epoch for exp in possible_experiments if exp.dataset.name == selected_dataset and exp.split == selected_split and
+                                    exp.model == selected_model and exp.k == selected_k])))
+        selected_epoch = st.selectbox("Epoch", options=["None"] + possible_epochs, key=f"experiment_epoch_selector_{id}")
+        
+        if selected_epoch == "None":
+            return
+
+        possible_layers = sorted(list(set([exp.layer for exp in possible_experiments if exp.dataset.name == selected_dataset and exp.split == selected_split and
+                                    exp.model == selected_model and exp.k == selected_k and exp.epoch == selected_epoch])))
+        selected_layer = st.selectbox("Layer", options=["None"] + possible_layers, key=f"experiment_layer_selector_{id}")
+        
+        if selected_layer == "None":
+            return
+        
+        selected_experiment = next((exp for exp in possible_experiments if exp.dataset.name == selected_dataset and exp.split == selected_split and 
+                                    exp.model == selected_model and exp.k == selected_k and exp.epoch == selected_epoch and exp.layer == selected_layer), None)
+    
+    return selected_experiment
+        
 def render_save():
     def save_state():
         os.makedirs("saved_states", exist_ok=True)
