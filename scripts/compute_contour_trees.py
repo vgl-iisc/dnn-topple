@@ -17,13 +17,26 @@ import os
 from contour_tree import compute_and_save_contour_tree
 
 def main():
-    if len(argv) != 4:
-        print("Usage: python compute_contour_trees.py <data_dir> <complexes_dir> <ct_dir>")
+    if len(argv) != 5:
+        print("Usage: python compute_contour_trees.py <data_dir> <complexes_dir> <ct_dir> <type: c | s | j (contour, split, or join)>")
         return
     
     data_dir = argv[1].strip("\\/")
     complexes_dir = argv[2].strip("\\/")
     ctrees_dir = argv[3].strip("\\/")
+    ct_type = argv[4].strip().lower()
+
+    if ct_type not in ["c", "s", "j"]:
+        print("Error: ct_type must be one of 'c', 's', or 'j'")
+        return
+
+    tree_type = {
+        "c": ct.TreeType.TypeContourTree,
+        "s": ct.TreeType.TypeSplitTree,
+        "j": ct.TreeType.TypeJoinTree
+    }
+    
+    tree_type = tree_type[ct_type]
 
     for (root, dirs, files) in os.walk(data_dir):
         if not "Losses" in root:
@@ -50,7 +63,7 @@ def main():
                 complex_file = os.path.join(complex_root, g)
 
                 print(f"Processing {scalar_file} with {complex_file}")
-                compute_and_save_contour_tree(complex_file, scalar_file, output_root)
+                compute_and_save_contour_tree(complex_file, scalar_file, output_root, tree_type)
                 print()
 
     print("Done")
