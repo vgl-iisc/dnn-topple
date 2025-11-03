@@ -76,47 +76,6 @@ collect:
     - path: features[4]
       tag: block1-pool
     
-    - path: features[5]
-      tag: block2-conv1
-    - path: features[6]
-      tag: block2-relu1
-    - path: features[7]
-      tag: block2-conv2
-    - path: features[8]
-      tag: block2-relu2
-    - path: features[9]
-      tag: block2-pool
-    
-    - path: features[10]
-      tag: block3-conv1
-    - path: features[11]
-      tag: block3-relu1
-    - path: features[12]
-      tag: block3-conv2
-    - path: features[13]
-      tag: block3-relu2
-    - path: features[14]
-      tag: block3-conv3
-    - path: features[15]
-      tag: block3-relu3
-    - path: features[16]
-      tag: block3-pool
-    
-    - path: features[17]
-      tag: block4-conv1
-    - path: features[18]
-      tag: block4-relu1
-    - path: features[19]
-      tag: block4-conv2
-    - path: features[20]
-      tag: block4-relu2
-    - path: features[21]
-      tag: block4-conv3
-    - path: features[22]
-      tag: block4-relu3
-    - path: features[23]
-      tag: block4-pool
-    
     - path: features[24]
       tag: block5-conv1
     - path: features[25]
@@ -184,9 +143,9 @@ runs:
     dataset: mnist
 
 do:
-  - resnet_cifar
-  - resnet_mnist
-  - vgg_cifar
+  # - resnet_cifar
+  # - resnet_mnist
+  # - vgg_cifar
   - vgg_mnist
 
 checkpoints_dir: /media/santripta/data2/Training/trained_models/
