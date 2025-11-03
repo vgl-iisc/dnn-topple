@@ -68,15 +68,17 @@ class RichFeature:
     def __init__(self, id: int, feature: ct.Feature, data: ct.ContourTreeData):
         self.id = id
                 
-        # confirmed correct, not going through nodeMap throws IndexError
-        self.frm = data.nodeMap[feature.frm]
-        self.to = data.nodeMap[feature.to]
+        self.frm = feature.frm
+        self.to = feature.to
         
-        self.fn_frm = data.fnVals[self.frm]
-        self.fn_to = data.fnVals[self.to]
+        frm_corrected = data.nodeMap[self.frm]
+        to_corrected = data.nodeMap[self.to]
         
-        self.type_frm = data.type[self.frm]
-        self.type_to = data.type[self.to]
+        self.fn_frm = data.fnVals[frm_corrected]
+        self.fn_to = data.fnVals[to_corrected]
+        
+        self.type_frm = data.type[frm_corrected]
+        self.type_to = data.type[to_corrected]
                 
         self.type_string = TYPE_STRING[self.type_frm] + "-" + TYPE_STRING[self.type_to]
         
@@ -102,8 +104,10 @@ class RichFeature:
         self.pred_accuracy: float = 0.0
         
 
-def compute_arc_features(exp: LossLandscapeExperiment, simpl: float):
-    ctree_name = exp.get_paths(st.session_state.landscapes_dir, st.session_state.ct_dir)["ctree"]
+def compute_arc_features(exp: LossLandscapeExperiment, simpl: float, data_dir=None, ct_dir=None):
+    data_dir = data_dir if data_dir is not None else st.session_state.landscapes_dir
+    ct_dir = ct_dir if ct_dir is not None else st.session_state.ct_dir
+    ctree_name = exp.get_paths(data_dir, ct_dir)["ctree"]
         
     topo = ct.TopologicalFeatures()
     topo.loadData(ctree_name)
@@ -111,7 +115,7 @@ def compute_arc_features(exp: LossLandscapeExperiment, simpl: float):
     data = topo.ctdata
     features = [RichFeature(id, f, data) for id, f in enumerate(topo.getArcFeatures(-1, simpl)[0])]
 
-    return features
+    return features, data
 
 CP_COLORING = {
     ct.MINIMUM: "#1f77b4",
@@ -180,7 +184,13 @@ def simpl_saddles(nxg: nx.DiGraph):
         for u, v, _ in edges:            
             nxg.remove_node(u)
 
-def compute_tree_graph(exp: LossLandscapeExperiment, features: list[RichFeature], use_steiner: str, simplify_saddles: bool):
+def rooted_tree_from_exp(exp: LossLandscapeExperiment, simpl: float, data_dir: str, ct_dir: str) -> nx.DiGraph:
+    features, _ = compute_arc_features(exp, simpl, data_dir, ct_dir)
+    nxg = compute_tree_graph(exp, features, "None", "None", 0, True)
+    
+    return nxg
+
+def compute_tree_graph(exp: LossLandscapeExperiment, features: list[RichFeature], steiner_mode: str, ego_origin: str, ego_radius: int, simplify_saddles: bool):
     useful_nodes = set()
     minima_nodes = set()
     maxima_nodes = set()
@@ -202,11 +212,12 @@ def compute_tree_graph(exp: LossLandscapeExperiment, features: list[RichFeature]
 
     for i, f in enumerate(features):
         class_label = exp.dataset.classes[f.majority_class]
+        majority_share = f.major_class_size / f.size if f.size > 0 else 0.0
         nxg.add_edge(
         f.frm,
         f.to,
         label=f"{class_label} ({f.size})",
-        title=f"ID: {f.id}\nPersistence: {f.pers}\nVolume: {f.size}\nMajority: {class_label}",
+        title=f"ID: {f.id}\nPersistence: {f.pers}\nVolume: {f.size}\nMajority: {class_label}\nMajority Share: {majority_share}",
         color="#888888",
         width=2,
         feature_id=f.id,
@@ -215,11 +226,20 @@ def compute_tree_graph(exp: LossLandscapeExperiment, features: list[RichFeature]
         majority=class_label,
         )
 
-    if use_steiner != "None":
-        steiner_v = list(minima_nodes) if use_steiner == "Minima" else list(maxima_nodes)
+    if steiner_mode != "None":
+        steiner_v = list(minima_nodes) if steiner_mode == "Minima" else list(maxima_nodes)
         nxg_undir = nx.algorithms.approximation.steiner_tree(nxg.to_undirected(), steiner_v, weight="edge_count")
         nxg = nxg.subgraph(nxg_undir.nodes).to_directed()
+    
+    if ego_origin != "None":
+        ego_verts = list(minima_nodes) if ego_origin == "Minima" else list(maxima_nodes)
+        full_graph = nx.DiGraph()
         
+        for v in ego_verts:
+            ego_g = nx.ego_graph(nxg, v, radius=ego_radius, undirected=True)
+            full_graph = nx.compose(full_graph, ego_g)
+            
+        nxg = full_graph
 
     if not simplify_saddles:
         return nxg
@@ -237,7 +257,7 @@ def make_arc_map(features: list[RichFeature]):
     
     return arc_map
 
-def compute_feature_map(exp: LossLandscapeExperiment, features: list[RichFeature]) -> list[int]:
+def compute_feature_map(exp: LossLandscapeExperiment, features: list[RichFeature], data: ct.ContourTreeData) -> list[int]:
     """
     Computes a mapping from contour tree node (i.e. an embedded vector for a data point) to the contour tree feature it belongs to and vice versa.
     Also populates rich data in the feature objects.
@@ -258,13 +278,16 @@ def compute_feature_map(exp: LossLandscapeExperiment, features: list[RichFeature
     for i, arc_id in enumerate(parts):
         assert arc_id in arc_map, "Arc not found in feature map!"
         
-        feat = arc_map[arc_id]
-        point2feat[i] = arc_map[arc_id]
+        # resolved_idx = data.nodeMap[i]
+        resolved_idx = i
         
-        feat.members.add(i)
+        feat = arc_map[arc_id]
+        point2feat[resolved_idx] = arc_map[arc_id]
+        
+        feat.members.add(resolved_idx)
         feat.size += 1
         
-        label = labels[i]
+        label = labels[resolved_idx]
         
         if label not in feat.class_counts:
             feat.class_counts[label] = 0

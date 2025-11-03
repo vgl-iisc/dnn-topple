@@ -26,18 +26,21 @@ def normalize_correctness(s):
         return s.astype(int)
     # otherwise coerce strings like 'True','False','true','1','0'
     return s.astype(str).str.lower().map({
-        'true': 1, 't': 1, '1': 1, 'yes': 1, 'y': 1,
-        'false': 0, 'f': 0, '0': 0, 'no': 0, 'n': 0
+        'correct': 1, 'true': 1, 't': 1, '1': 1, 'yes': 1, 'y': 1,
+        'incorrect': 0, 'false': 0, 'f': 0, '0': 0, 'no': 0, 'n': 0
     }).fillna(0).astype(int)
 
 
-def process_file(p: Path):
+def process_file(p: str, epoch = None):
     df = pd.read_csv(p)
     # try common names for correctness column
     correctness_cols = [c for c in df.columns if c.lower() in ('correctness', 'correct', 'is_correct')]
     if not correctness_cols:
         raise ValueError(f"No correctness-like column found in {p} (columns: {list(df.columns)})")
     corr_col = correctness_cols[0]
+
+    if epoch is not None and 'Epoch_No' in df.columns:
+        df = df[df['Epoch_No'] == epoch]
 
     # try common split column names
     split_cols = [c for c in df.columns if c.lower() in ('split', 'set', 'phase')]
@@ -75,7 +78,7 @@ def main(argv):
     errors = []
     for p in sorted(files):
         try:
-            df = process_file(p)
+            df = process_file(args.root)
             per_file_frames.append(df)
             if args.verbose:
                 print(f"Processed {p}:\n", df.to_string(index=False))

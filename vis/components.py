@@ -9,6 +9,7 @@ from experiment import LossLandscapeExperiment, Dataset
 import streamlit as st
 import streamlit.components.v1 as components
 
+import networkx as nx
 import altair as alt
 import pandas as pd
 
@@ -133,20 +134,34 @@ def render_tree_explorer(id: int):
             
     def tree_view(features, allowed_types):
         
-        with st.container(horizontal=True, horizontal_alignment="center", vertical_alignment="bottom", gap="medium") as c:
-            use_steiner = st.selectbox("Steiner Tree", key=f"steiner_selector_{id}", options=["None", "Minima", "Maxima"], index=1, help="Use Steiner tree to include important critical points in the tree view.")
+        steiner_mode = "None"
+        ego_origin = "None"
+        ego_radius = 0
+        
+        with st.container(horizontal=True, horizontal_alignment="center", vertical_alignment="bottom", gap="medium"):
+            simpl_mode = st.selectbox("Simplification Mode", key=f"simpl_mode_selector_{id}", options=["Feature Types", "Steiner", "Ego"], index=0, help="Choose how to simplify the tree for visualization.")
+            
+            if simpl_mode == "Steiner":
+                steiner_mode = st.selectbox("Steiner Tree", key=f"steiner_selector_{id}", options=["Minima", "Maxima"], index=0, help="Use Steiner tree to include important critical points in the tree view.")
+            if simpl_mode == "Ego":
+                ego_origin = st.selectbox("Ego Origin", key=f"ego_origin_selector_{id}", options=["Minima", "Maxima"], index=0, help="Choose the type of critical point to center the ego tree around.")
+                ego_radius = st.slider("Ego Radius", key=f"ego_radius_slider_{id}", min_value=1, max_value=50, value=2, help="Radius of the ego tree to display.")
+            
             # TODO: saddle simplification is killing arcs, need to fix that
             # saddle_simpl = st.toggle(f"Saddle Simplification", key=f"saddle_simpl_toggle_{id}", value=False, help="Remove chains of saddle-saddle connections for a cleaner tree view.")
             saddle_simpl = False
         
-        valid_features = [f for f in features if (f.type_frm, f.type_to) in allowed_types]
+        valid_features = features
+
+        if simpl_mode == "Feature Types":
+            valid_features = [f for f in features if (f.type_frm, f.type_to) in allowed_types]
 
         if len(valid_features) == 0:
             st.warning("No features of the selected types.")
             return
         
         if st.button("Recompute Tree Graph", key=f"recompute_tree_graph_{id}"):
-            st.session_state[f"tree_graph_{id}"] = compute_tree_graph(exp, valid_features, use_steiner, saddle_simpl)
+            st.session_state[f"tree_graph_{id}"] = compute_tree_graph(exp, valid_features, steiner_mode, ego_origin, ego_radius, saddle_simpl)
 
         gnx = st.session_state.get(f"tree_graph_{id}", None)
 
@@ -154,7 +169,7 @@ def render_tree_explorer(id: int):
             st.text("Compute tree graph to begin.")
             return
 
-        st.text(f"{len(valid_features)} features selected. Rendering {len(gnx.edges)} features after processing.")
+        st.text(f"{len(valid_features)} features selected. Rendering {len(gnx.edges)} features after processing. Connected: {nx.is_connected(gnx.to_undirected())}")
         
         g = net.Network(height="600px", width="100%", directed=True)
         g.from_nx(gnx)

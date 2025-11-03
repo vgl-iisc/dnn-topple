@@ -39,6 +39,12 @@ def compute_contour_tree(G: nx.Graph, scalar_function: np.ndarray, tree_type: ct
 
     return tree
 
+tree_type_name = {
+    ct.TreeType.TypeContourTree: "contour_tree",
+    ct.TreeType.TypeSplitTree: "split_tree",
+    ct.TreeType.TypeJoinTree: "join_tree"
+}
+
 def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output_directory: str, tree_type: ct.TreeType = ct.TreeType.TypeContourTree):
 
     os.makedirs(output_directory, exist_ok=True)
@@ -60,13 +66,13 @@ def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output
 
     # Compute the contour tree
     contour_tree = compute_contour_tree(G, scalar_function, tree_type)
-    print("Computed contour tree.")
+    print(f"Computed {tree_type_name[tree_type]}.")
 
     outfile = os.path.join(output_directory, f"{name}")
     # TODO: make this an option
     contour_tree.output(outfile, tree_type)
     
-    print(f"Saved contour tree to {output_directory}.")
+    print(f"Saved {tree_type_name[tree_type]} to {output_directory}.")
     print(f"Computing hierarchical simplification.")
 
     ctdata = ct.ContourTreeData()

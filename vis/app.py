@@ -44,9 +44,10 @@ def compute_arcs_and_coverage(id: int, simpl: float):
     st.session_state[f"computed_simpl_{id}"] = simpl
     
     with st.spinner(f"Computing arcs and coverage at simplification {simpl}..."):
-        feats = compute_arc_features(exp, simpl)
+        feats, data = compute_arc_features(exp, simpl)
         st.session_state[f"feats_{id}"] = feats
-        node2feat = compute_feature_map(exp, feats)
+        st.session_state[f"ctdata_{id}"] = data
+        node2feat = compute_feature_map(exp, feats, data)
         st.session_state[f"node2feat_{id}"] = node2feat
         preds = load_preds(exp)
         st.session_state[f"preds_{id}"] = preds
