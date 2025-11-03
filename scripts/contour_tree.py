@@ -15,7 +15,7 @@ import os
 
 from utils import get_adjlist_from_graph
 
-def compute_contour_tree(G: nx.Graph, scalar_function: np.ndarray):
+def compute_contour_tree(G: nx.Graph, scalar_function: np.ndarray, tree_type: ct.TreeType = ct.TreeType.TypeContourTree) -> ct.MergeTree:
     """
     Computes the contour tree for the given graph and scalar function.
 
@@ -34,13 +34,18 @@ def compute_contour_tree(G: nx.Graph, scalar_function: np.ndarray):
 
     # Compute the contour tree
     tree = ct.MergeTree()
-    tree_type = ct.TreeType.TypeContourTree
 
     tree.computeTree(gsf, tree_type)
 
     return tree
 
-def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output_directory: str):
+tree_type_name = {
+    ct.TreeType.TypeContourTree: "contour_tree",
+    ct.TreeType.TypeSplitTree: "split_tree",
+    ct.TreeType.TypeJoinTree: "join_tree"
+}
+
+def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output_directory: str, tree_type: ct.TreeType = ct.TreeType.TypeContourTree):
 
     os.makedirs(output_directory, exist_ok=True)
 
@@ -60,13 +65,14 @@ def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output
         raise ValueError("The length of the scalar function must match the number of nodes in the graph.")
 
     # Compute the contour tree
-    contour_tree = compute_contour_tree(G, scalar_function)
-    print("Computed contour tree.")
+    contour_tree = compute_contour_tree(G, scalar_function, tree_type)
+    print(f"Computed {tree_type_name[tree_type]}.")
 
     outfile = os.path.join(output_directory, f"{name}")
-    contour_tree.output(outfile, ct.TreeType.TypeContourTree)
+    # TODO: make this an option
+    contour_tree.output(outfile, tree_type)
     
-    print(f"Saved contour tree to {output_directory}.")
+    print(f"Saved {tree_type_name[tree_type]} to {output_directory}.")
     print(f"Computing hierarchical simplification.")
 
     ctdata = ct.ContourTreeData()
@@ -87,17 +93,28 @@ def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output
     print(f"Saved simplification order to {output_directory}.")
 
 def main():
-    if len(argv) != 4:
-        print("Usage: python compute_ctree.py <adjlist_file.txt> <scalar_function_file.txt> <output_directory>")
+    if len(argv) != 5:
+        print("Usage: python compute_ctree.py <adjlist_file.txt> <scalar_function_file.txt> <output_directory> <type: c | s | j (contour, split, or join)>")
         return
     
     adjlist_file = argv[1]
     scalar_fn_file = argv[2]
     output_directory = argv[3]
+    ct_type = argv[4].strip().lower()
     
-    compute_and_save_contour_tree(adjlist_file, scalar_fn_file, output_directory)    
+    if ct_type not in ["c", "s", "j"]:
+        print("Error: ct_type must be one of 'c', 's', or 'j'")
+        return
     
+    tree_type = {
+        "c": ct.TreeType.TypeContourTree,
+        "s": ct.TreeType.TypeSplitTree,
+        "j": ct.TreeType.TypeJoinTree
+    }
+    tree_type = tree_type[ct_type]
+
+    compute_and_save_contour_tree(adjlist_file, scalar_fn_file, output_directory, tree_type)  
+
 
 if __name__ == "__main__":
-    input()
     main()
