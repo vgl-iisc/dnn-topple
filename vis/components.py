@@ -1,3 +1,4 @@
+from pyexpat import features
 from vis_utils import RichFeature, class2color, get_class_coverage, load_preds, compute_tree_graph
 from dataset_loader import load_dataset
 
@@ -109,7 +110,7 @@ def render_tree_explorer(id: int):
         simpl: float = st.session_state[f"computed_simpl_{id}"]
                         
         with st.container(horizontal=True, horizontal_alignment="center") as c:
-            x_type = st.selectbox("X-Axis", options=list(ARC_X_AXIS_TYPE.keys()), index=2, format_func=lambda x: ARC_X_AXIS_TYPE[x], key=f"x_axis_selector_{id}")
+            x_type = st.selectbox("X-Axis", options=list(ARC_X_AXIS_TYPE.keys()), index=0, format_func=lambda x: ARC_X_AXIS_TYPE[x], key=f"x_axis_selector_{id}")
         
         if x_type == "sorted":
             x_type = st.multiselect("Sort by", options=list(ARC_X_AXIS_SORTING.keys()), default=["majority class", "fstart"], key=f"sort_type_selector_{id}")
@@ -139,7 +140,7 @@ def render_tree_explorer(id: int):
         ego_radius = 0
         
         with st.container(horizontal=True, horizontal_alignment="center", vertical_alignment="bottom", gap="medium"):
-            simpl_mode = st.selectbox("Simplification Mode", key=f"simpl_mode_selector_{id}", options=["Feature Types", "Steiner", "Ego"], index=0, help="Choose how to simplify the tree for visualization.")
+            simpl_mode = st.selectbox("Simplification Mode", key=f"simpl_mode_selector_{id}", options=["None", "Feature Types", "Steiner", "Ego"], index=0, help="Choose how to simplify the tree for visualization.")
             
             if simpl_mode == "Steiner":
                 steiner_mode = st.selectbox("Steiner Tree", key=f"steiner_selector_{id}", options=["Minima", "Maxima"], index=0, help="Use Steiner tree to include important critical points in the tree view.")
@@ -299,21 +300,28 @@ def render_coverage_map(id: int):
     if len(selection) == 0:
         selection = [f.id for f in filtered_features]
 
+    st.text(f"Selected Features: {','.join([str(f) for f in selection])}")
+    additional_feats = st.text_input("Add Feature IDs (comma-separated)", key=f"add_feat_ids_{id}", value="")        
+    selection.extend([int(fid.strip()) for fid in additional_feats.split(",") if fid.strip().isdigit()])
+    
+    selection = list(set(selection))
+
     f2c, acc, c2f, f2m, datex = st.tabs(["Feature to Class", "Accuracy", "Class to Feature", "Feature to Members", "Data Explorer"])
     selected_features = [features[fid] for fid in selection]
     
-    with f2c:        
+    with f2c:                
         with st.container(horizontal=True, vertical_alignment="top", horizontal_alignment="left"):
             fine_grained = st.selectbox("View", key=f"fine_grained_{id}", options=F2C_VIEWS, format_func=lambda x: x.title())
             show_what = st.selectbox("Y-axis", key=f"show_what_{id}", options=["Counts", "Proportions", "Coverage"], index=2)
             freeze_top = st.checkbox("Freeze top", key=f"freeze_top_{id}", value=True)
-        
+                
         plot = f2c_plot(selected_features, fine_grained, show_what, freeze_top)
         
         if plot is None:
             st.warning("No datapoints in selection.")
         else:
-            st.altair_chart(plot, use_container_width=True, key=f"f2c_plot_{id}")
+            st.altair_chart(plot, use_container_width=True, key=f"f2c_plot_{id}")        
+        
         
     with acc:
         total_points = sum([f.size for f in selected_features])
@@ -348,7 +356,32 @@ def render_coverage_map(id: int):
         st.altair_chart(heat, use_container_width=True, key=f"confusion_heatmap_{id}")
         
     with c2f:
-        st.info("Class to Feature view not implemented yet.")
+        selected_class = st.selectbox("Class", options=exp.dataset.classes, key=f"class_selector_c2f_{id}")
+        selected_class_idx = exp.dataset.classes.index(selected_class)
+        
+        entries = []
+        
+        for f in features:            
+            if selected_class_idx in f.class_counts:
+                share = f.class_counts[selected_class_idx] / f.size
+                coverage = f.class_coverage[selected_class_idx]
+                
+                top_5_classes = sorted(f.class_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+                
+                entries.append({
+                    "ID": f.id,
+                    "Type": f.type_string,
+                    "Size": f.size,
+                    "Share": share,
+                    "Coverage": coverage,
+                    "Top 5": ', '.join([f"{exp.dataset.classes[cid]} ({cnt})" for cid, cnt in top_5_classes])
+                })
+                
+        assert len(entries) > 0, "No entries for selected class"
+        df = pd.DataFrame(entries).sort_values(by=["Coverage", "ID"], ascending=[False, True])
+        df["Share"] = df["Share"].map("{:.3%}".format)
+        df["Coverage"] = df["Coverage"].map("{:.3%}".format)
+        st.dataframe(df, use_container_width=True, key=f"class_to_feature_table_{id}", hide_index=True)
         
     with f2m:
         with st.container(height=600):

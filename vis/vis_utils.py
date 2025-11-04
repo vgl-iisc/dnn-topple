@@ -216,7 +216,7 @@ def compute_tree_graph(exp: LossLandscapeExperiment, features: list[RichFeature]
         nxg.add_edge(
         f.frm,
         f.to,
-        label=f"{class_label} ({f.size})",
+        label=f"{f.id}: {class_label} ({f.size})",
         title=f"ID: {f.id}\nPersistence: {f.pers}\nVolume: {f.size}\nMajority: {class_label}\nMajority Share: {majority_share}",
         color="#888888",
         width=2,
