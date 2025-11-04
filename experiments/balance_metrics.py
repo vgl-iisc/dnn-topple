@@ -17,6 +17,8 @@ import vis.vis_utils as vu
 import matplotlib.pyplot as plt
 
 METRICS = ["average_branching_factor", "colless_index", "sackin_index", "total_cophenetic_index"]
+# THRESH_SELECTION = "valley=classes"
+THRESH_SELECTION = "1e-3"
 
 def plot_epoch_metrics_vs_accuracies(csv_path: str, out_dir: str):
 	df = pd.read_csv(csv_path)
@@ -110,9 +112,22 @@ def main(datasets_dir: str, data_dir: str, ct_dir: str, output_path: str) -> Non
 		tree_path = paths["ctree"]
 
 		fns, num_min = get_valley_vs_thresh(tree_path)
-		num_classes = len(experiment.dataset.classes)
+  
+		if THRESH_SELECTION == "valley=classes":
+			wanted_num_valleys = len(experiment.dataset.classes)
+		elif THRESH_SELECTION == "valley=2classes":
+			wanted_num_valleys = 2 * len(experiment.dataset.classes)
+		elif THRESH_SELECTION == "1e-3":
+			wanted_num_valleys = None
+			thresh = 1e-3
+		else:
+			raise ValueError(f"Unknown THRESH_SELECTION: {THRESH_SELECTION}")
 
-		thresh = fns[num_min.index(num_classes)]
+		if wanted_num_valleys is not None:
+			if not wanted_num_valleys in num_min:
+				wanted_num_valleys = max(num_min)
+				print(f"Desired number of valleys {wanted_num_valleys} not found. Using maximum available: {wanted_num_valleys}")
+			thresh = fns[num_min.index(wanted_num_valleys)]
 		tree = vu.rooted_tree_from_exp(experiment, thresh, data_dir, ct_dir)
 
 		metrics = tm.compute_tree_imbalance_metrics(tree)
@@ -127,9 +142,8 @@ def main(datasets_dir: str, data_dir: str, ct_dir: str, output_path: str) -> Non
 			"epoch": experiment.epoch,
 			"layer": experiment.layer,
 			"thresh": thresh,
-			"thresh_mode": "valley=classes",
+			"thresh_mode": THRESH_SELECTION,
 			"node_count": tree.number_of_nodes(),
-			"missing_coless": metrics["missing_colless"],
 			**metrics
 		}
   
@@ -152,5 +166,8 @@ if __name__ == "__main__":
 	parser.add_argument("output_path", type=str, help="Path to output CSV file.")
 
 	args = parser.parse_args()
+
+	print(f"Using threshold selection mode: {THRESH_SELECTION}, writing to {args.output_path}, continue?")
+	input()
 
 	main(args.datasets_dir, args.data_dir, args.ct_dir, args.output_path)

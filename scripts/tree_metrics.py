@@ -1,3 +1,4 @@
+from itertools import combinations
 import networkx as nx
 import numpy as np
 
@@ -15,7 +16,7 @@ def average_branching_factor(tree: nx.DiGraph) -> float:
 			   are no internal nodes.
 	"""
 	internal_nodes = [n for n in tree.nodes if tree.in_degree(n) > 0]
-	if not internal_nodes:
+	if len(internal_nodes) == 0:
 		return 0.0
 
 	total_children = sum(tree.in_degree(n) for n in internal_nodes)
@@ -67,14 +68,20 @@ def total_cophenetic_index(tree: nx.DiGraph) -> float:
 	"""
 	tree = tree.reverse()
  
+	root = list(nx.topological_sort(tree))[0]
 	leaves = [n for n in tree.nodes if tree.out_degree(n) == 0]
 	cophenetic_sum = 0.0
+ 
+	pairs = combinations(leaves, 2)
 
-	for i in range(len(leaves)):
-		for j in range(i + 1, len(leaves)):
-			lca = nx.algorithms.lowest_common_ancestor(tree, leaves[i], leaves[j])
-			depth = nx.shortest_path_length(tree, source=list(nx.topological_sort(tree))[0], target=lca)
-			cophenetic_sum += depth
+	lcas = map(lambda p: p[1], nx.all_pairs_lowest_common_ancestor(tree, pairs))
+	lengths = nx.single_source_shortest_path_length(tree, root)
+ 
+	for lca in lcas:
+		if lca not in lengths:
+			print(f"LCA {lca} not found in lengths; skipping.")
+			return np.nan
+		cophenetic_sum += lengths[lca]
 
 	return cophenetic_sum
 
@@ -91,13 +98,18 @@ def sackin_index(tree: nx.DiGraph) -> float:
 	"""
 	
 	rev = tree.reverse()
+	root = list(nx.topological_sort(rev))[0]
  
 	leaves = [n for n in rev.nodes if rev.out_degree(n) == 0]
 	sackin_sum = 0.0
+ 
+	lengths = nx.single_source_shortest_path_length(rev, root)
 
 	for leaf in leaves:
-		depth = nx.shortest_path_length(rev, source=list(nx.topological_sort(rev))[0], target=leaf)
-		sackin_sum += depth
+		if leaf not in lengths:
+			print(f"Leaf {leaf} not found in lengths; skipping.")
+			return np.nan
+		sackin_sum += lengths[leaf]
 
 	return sackin_sum
 
@@ -113,14 +125,14 @@ def compute_tree_imbalance_metrics(tree: nx.DiGraph) -> dict:
 	colless_idx, missing_colless = colless_index(tree)
  
 	if missing_colless > 3:
-		print(f"too many non-binary nodes ({missing_colless}); skipping metrics.")
+		print(f"too many non-binary nodes ({missing_colless}); skipping colless.")
      
 		return {
-			"average_branching_factor": np.nan,
+			"average_branching_factor": average_branching_factor(tree),
 			"colless_index": np.nan,
 			"missing_colless": missing_colless,
-			"total_cophenetic_index": np.nan,
-			"sackin_index": np.nan
+			"total_cophenetic_index": total_cophenetic_index(tree),
+			"sackin_index": sackin_index(tree)
 		}
  
 	metrics = {
