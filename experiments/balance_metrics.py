@@ -18,9 +18,9 @@ import matplotlib.pyplot as plt
 
 METRICS = ["average_branching_factor", "colless_index", "sackin_index", "total_cophenetic_index"]
 # THRESH_SELECTION = "valley=classes"
-THRESH_SELECTION = "1e-3"
+THRESH_SELECTION = 1e-2
 
-def plot_epoch_metrics_vs_accuracies(csv_path: str, out_dir: str):
+def plot_epoch_metrics_vs_accuracies(csv_path: str, out_dir: str, ignore_percentile: float = 0.0):
 	df = pd.read_csv(csv_path)
 
 	epoch_vs_acc_path = os.path.join(out_dir, "epoch_vs_accuracy")
@@ -36,6 +36,20 @@ def plot_epoch_metrics_vs_accuracies(csv_path: str, out_dir: str):
 	for name, group in df.groupby(['dataset', 'model', 'k', 'layer', 'split', 'thresh_mode']):
 		ds, model, k, layer, split, thresh_selection = name
 		group.sort_values(by='epoch', inplace=True)
+
+		if ignore_percentile > 0.0:
+			group = group.copy()
+
+			for metric in METRICS:
+				if metric == "average_branching_factor":
+					continue
+ 
+				threshold = np.percentile(group[metric].fillna(0.0), ignore_percentile)
+				if np.isnan(threshold):
+					print(f"Percentile computation for metric {metric} on {name} resulted in NaN; skipping.")
+					continue
+				print(f"Ignoring above {ignore_percentile} percentile value {threshold} for metric {metric} on {name}")
+				group = group[group[metric] < threshold]
   
 		fig, (ax1, ax2) = plt.subplots(1, 2)
 		ax1.plot(group['epoch'], group['train_acc'], label='Train Accuracy')
@@ -117,9 +131,9 @@ def main(datasets_dir: str, data_dir: str, ct_dir: str, output_path: str) -> Non
 			wanted_num_valleys = len(experiment.dataset.classes)
 		elif THRESH_SELECTION == "valley=2classes":
 			wanted_num_valleys = 2 * len(experiment.dataset.classes)
-		elif THRESH_SELECTION == "1e-3":
+		elif type(THRESH_SELECTION) is float:
 			wanted_num_valleys = None
-			thresh = 1e-3
+			thresh = THRESH_SELECTION
 		else:
 			raise ValueError(f"Unknown THRESH_SELECTION: {THRESH_SELECTION}")
 
@@ -142,7 +156,7 @@ def main(datasets_dir: str, data_dir: str, ct_dir: str, output_path: str) -> Non
 			"epoch": experiment.epoch,
 			"layer": experiment.layer,
 			"thresh": thresh,
-			"thresh_mode": THRESH_SELECTION,
+			"thresh_mode": str(THRESH_SELECTION),
 			"node_count": tree.number_of_nodes(),
 			**metrics
 		}
