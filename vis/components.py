@@ -4,6 +4,11 @@ from dataset_loader import load_dataset
 
 import pyvis.network as net
 
+import sys
+
+sys.path.append("scripts/")
+from tree_metrics import compute_tree_imbalance_metrics
+
 import os
 
 from experiment import LossLandscapeExperiment, Dataset
@@ -171,12 +176,15 @@ def render_tree_explorer(id: int):
             return
 
         st.text(f"{len(valid_features)} features selected. Rendering {len(gnx.edges)} features after processing. Connected: {nx.is_connected(gnx.to_undirected())}")
+
+        imbalance_metrics = compute_tree_imbalance_metrics(gnx)
         
         g = net.Network(height="600px", width="100%", directed=True)
         g.from_nx(gnx)
         
         html = g.generate_html()
         components.html(html, height=600)
+        st.write(imbalance_metrics)
         
     features: list[RichFeature] | None = st.session_state.get(f"feats_{id}", None)
 
@@ -294,17 +302,19 @@ def render_coverage_map(id: int):
     
     filtered_features: list[RichFeature] = st.session_state.get(f"filtered_feats_{id}", [])
     selection: list[int] = st.session_state.get(f"explorer_selected_arcs_{id}", [])
-    st.session_state[f"dataset_obj_{id}"] = st.session_state.get(f"dataset_obj_{id}", load_dataset(exp))
+    st.session_state[f"dataset_obj_{id}"] = load_dataset(exp)
     ds = st.session_state[f"dataset_obj_{id}"]
 
     if len(selection) == 0:
         selection = [f.id for f in filtered_features]
 
-    st.text(f"Selected Features: {','.join([str(f) for f in selection])}")
-    additional_feats = st.text_input("Add Feature IDs (comma-separated)", key=f"add_feat_ids_{id}", value="")        
-    selection.extend([int(fid.strip()) for fid in additional_feats.split(",") if fid.strip().isdigit()])
+    focused_feats = st.text_input("Focus Feature IDs (comma-separated)", key=f"add_feat_ids_{id}", value="")        
+    focused_feat_ids = [int(fid.strip()) for fid in focused_feats.split(",") if fid.strip().isdigit()]
     
+    if len(focused_feat_ids) > 0:
+        selection = focused_feat_ids
     selection = list(set(selection))
+    st.text(f"Selected Features: {','.join([str(f) for f in selection])}")
 
     f2c, acc, c2f, f2m, datex = st.tabs(["Feature to Class", "Accuracy", "Class to Feature", "Feature to Members", "Data Explorer"])
     selected_features = [features[fid] for fid in selection]

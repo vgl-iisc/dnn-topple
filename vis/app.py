@@ -83,7 +83,7 @@ def float_input(key: str, label: str, default: float, min_value = None, max_valu
     return fval
 
 # TODO: we'd really like to fragment, but there's a really strange bug that makes the app unusable, so for now we just use a normal function
-# @st.fragment
+@st.fragment
 def render_experiment(id: int, half_width: bool):
 
     _, experiments = find_available_experiments()

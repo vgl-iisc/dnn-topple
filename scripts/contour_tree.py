@@ -62,7 +62,8 @@ def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output
     print(f"Loaded scalar function with {len(scalar_function)} values.")
 
     if len(scalar_function) != G.number_of_nodes():
-        raise ValueError("The length of the scalar function must match the number of nodes in the graph.")
+        print(f"Error: Scalar function length {len(scalar_function)} does not match number of nodes {G.number_of_nodes()}. Skipping.")
+        return
 
     # Compute the contour tree
     contour_tree = compute_contour_tree(G, scalar_function, tree_type)
