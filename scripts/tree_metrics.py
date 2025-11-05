@@ -127,19 +127,26 @@ def compute_tree_imbalance_metrics(tree: nx.DiGraph) -> dict:
 	if missing_colless > 3:
 		print(f"too many non-binary nodes ({missing_colless}); skipping colless.")
      
-		return {
+		metrics =  {
 			"average_branching_factor": average_branching_factor(tree),
 			"colless_index": np.nan,
 			"missing_colless": missing_colless,
 			"total_cophenetic_index": total_cophenetic_index(tree),
 			"sackin_index": sackin_index(tree)
 		}
- 
-	metrics = {
-		"average_branching_factor": average_branching_factor(tree),
-		"colless_index": colless_idx,
-		"missing_colless": missing_colless,
-		"total_cophenetic_index": total_cophenetic_index(tree),
-		"sackin_index": sackin_index(tree)
-	}
+	else:
+		metrics = {
+			"average_branching_factor": average_branching_factor(tree),
+			"colless_index": colless_idx,
+			"missing_colless": missing_colless,
+			"total_cophenetic_index": total_cophenetic_index(tree),
+			"sackin_index": sackin_index(tree)
+		}
+  
+	mv_tuples = list(metrics.items())
+
+	for metric, val in mv_tuples:
+		if not metric.startswith("average_"):
+			metrics[f"average_{metric}"] = val / tree.number_of_nodes() if tree.number_of_nodes() > 0 else np.nan
+
 	return metrics

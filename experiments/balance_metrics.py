@@ -150,12 +150,6 @@ def main(datasets_dir: str, data_dir: str, ct_dir: str, output_path: str) -> Non
 
 		accuracy = process_file(paths["compiled_res"], experiment.epoch)
 
-		mv_tuples = list(metrics.items())
-
-		for metric, val in mv_tuples:
-			if not metric.startswith("average_"):
-				metrics[f"average_{metric}"] = val / tree.number_of_nodes() if tree.number_of_nodes() > 0 else np.nan
-
 		result = {
 			"dataset": experiment.dataset.name,
 			"split": experiment.split,
