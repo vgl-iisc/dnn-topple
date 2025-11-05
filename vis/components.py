@@ -316,6 +316,7 @@ def render_coverage_map(id: int):
 
     f2c, acc, c2f, f2m, datex = st.tabs(["Feature to Class", "Accuracy", "Class to Feature", "Feature to Members", "Data Explorer"])
     selected_features = [features[fid] for fid in selection]
+    node2feat = st.session_state.get(f"node2feat_{id}", [])
     
     with f2c:                
         with st.container(horizontal=True, vertical_alignment="top", horizontal_alignment="left"):
@@ -328,8 +329,7 @@ def render_coverage_map(id: int):
         if plot is None:
             st.warning("No datapoints in selection.")
         else:
-            st.altair_chart(plot, use_container_width=True, key=f"f2c_plot_{id}")        
-        
+            st.altair_chart(plot, use_container_width=True, key=f"f2c_plot_{id}")
         
     with acc:
         total_points = sum([f.size for f in selected_features])
@@ -391,8 +391,8 @@ def render_coverage_map(id: int):
             st.warning("No features contain the selected class(es).")
         else:
             df = pd.DataFrame(entries).sort_values(by=["Coverage", "ID"], ascending=[False, True])
-            df["Share"] = df["Share"].map("{:.3%}".format)
-            df["Coverage"] = df["Coverage"].map("{:.3%}".format)
+            df["Share"] = df["Share"]
+            df["Coverage"] = df["Coverage"]
             st.dataframe(df, use_container_width=True, key=f"class_to_feature_table_{id}", hide_index=True)
         
     with f2m:
@@ -407,46 +407,97 @@ def render_coverage_map(id: int):
                 
                 with st.expander(f"Feature {f.id} ({len(relevant_members)} / {f.size})", expanded=False):
                     st.write(",".join(map(str, relevant_members)))
+    
+    def image_view(indices_fids: list[tuple[int, int]], datapoints: list, siamese: bool = False):
+        st.write(f"Loaded {len(datapoints)} data points.")
         
+        key = f"data_explorer_image_view_{id}"
+        key += "_siamese" if siamese else ""
+        
+        if not len(datapoints) == 0:
+            per_page = 16
+            page_count = (len(datapoints) + per_page - 1) // per_page
+            page = st.slider("Page", min_value=1, max_value=max(1, page_count), value=1, key=key) - 1
+            
+            with st.container(height=700):
+                cols = st.columns(4)
+                for i, ((idx, fid), data_point) in enumerate(list(zip(indices_fids, datapoints))[page * per_page:(page + 1) * per_page]):
+                    lbl = exp.dataset.classes[data_point["label"]]
+                    with cols[i % 4]:
+                        st.image(data_point['image'].numpy().transpose(1, 2, 0), caption=f"Idx {idx} ({fid}): {lbl}")
+        else:
+            st.info("No data points loaded.")
+            
     with datex:
-        cs_idx = st.text_input("Data Indices (comma-separated)", key=f"data_explorer_indices_{id}", value="")
-        selected_classes = st.multiselect("Filter Classes", options=classes, default=classes, key=f"member_classes_selector_datex_{id}")
-        selected_labels = set(classes.index(c) for c in selected_classes)
+        with st.container(horizontal=True, vertical_alignment="center"):
+            mode = st.selectbox("Load Mode", options=["From Indices", "From Selected Features"], index=1, key=f"data_explorer_mode_selector_{id}")
+            if mode == "From Selected Features":
+                selected_classes = st.multiselect("Filter Classes", options=classes, default=classes, key=f"member_classes_selector_datex_{id}")
+                selected_labels = set(classes.index(c) for c in selected_classes)
+            elif mode == "From Indices":
+                cs_idx = st.text_input("Data Indices (comma-separated)", key=f"data_explorer_indices_{id}", value="")
         
-        def load_from_indices(indices: list[int]):
-            st.session_state[f"loaded_indices_{id}"] = indices
-            st.session_state[f"loaded_data_points_{id}"] = [ds[i] for i in indices if node2label[i] in selected_labels]
-        
-        with st.container(horizontal=True):
-            if st.button("Load Data Points", key=f"load_data_points_{id}"):
-                indices = []
-                for part in cs_idx.split(","):
-                    part = part.strip()
-                    if part.isdigit():
-                        indices.append(int(part))
-                        
-                if any([i < 0 or i >= len(ds) for i in indices]):
-                    st.error("One or more indices are out of bounds.")    
-                else:
-                    load_from_indices(indices)
-                    
-            if st.button("Load from Selected Features", key=f"load_from_features_{id}"):
-                indices = set()
-                for f in selected_features:
-                    indices = indices.union(set(f.members))
-                indices = sorted(list(indices))
-                load_from_indices(indices)
+        def load_from_indices_fids(indices_fids: list[tuple[int, int]], siamese: bool = False):
+            st.session_state[f"loaded_indices_{id}"] = indices_fids
+            st.session_state[f"loaded_data_points_{id}"] = [ds[i] for i, _ in indices_fids if node2label[i] in selected_labels]
+            
+            st.session_state[f"data_explorer_siamese_{id}"] = siamese
+            
+            if not siamese:
+                return
+            
+            indices_fids_set = set(indices_fids)
+            siamese_indices_fids = [(i, f.id) for f in features for i in f.members if node2label[i] in selected_labels]
+            siamese_indices_fids = [x for x in siamese_indices_fids if x not in indices_fids_set]
+            
+            st.session_state[f"siamese_indices_{id}"] = siamese_indices_fids
+            st.session_state[f"siamese_data_points_{id}"] = [ds[i] for i, _ in siamese_indices_fids]
 
-        indices = st.session_state.get(f"loaded_indices_{id}", [])
+        if mode == "From Indices" and cs_idx.strip() != "":
+            indices_fids = []
+            for part in cs_idx.split(","):
+                part = part.strip()
+                if part.isdigit():
+                    idx = int(part)
+                    fid = node2feat[idx].id if idx < len(node2feat) else -1
+                    indices_fids.append((idx, fid))
+                    
+            if any([i < 0 or i >= len(ds) for i in indices_fids]):
+                st.error("One or more indices are out of bounds.")    
+            else:
+                load_from_indices_fids(indices_fids)
+        elif mode == "From Selected Features":
+            with st.container(horizontal=True):
+                if st.button("Load from Selected Features", key=f"load_from_features_{id}"):
+                    indices_fids = set()
+                    for f in selected_features:
+                        indices_fids = indices_fids.union(set([(m, f.id) for m in f.members]))
+                    indices_fids = sorted(list(indices_fids))
+                    load_from_indices_fids(indices_fids)
+                if st.button("Load in Siamese View", key=f"load_siamese_view_{id}"):
+                    indices_fids = set()
+                    for f in selected_features:
+                        indices_fids = indices_fids.union(set([(m, f.id) for m in f.members]))
+                    indices_fids = sorted(list(indices_fids))
+                    load_from_indices_fids(indices_fids, True)
+
+        indices_fids = st.session_state.get(f"loaded_indices_{id}", [])
         datapoints = st.session_state.get(f"loaded_data_points_{id}", [])
 
-        st.write(f"Loaded {len(datapoints)} data points.")
-        with st.container(height=600):
-            cols = st.columns(4)
-            for i, (idx, data_point) in enumerate(zip(indices, datapoints)):
-                lbl = exp.dataset.classes[data_point["label"]]
-                with cols[i % 4]:
-                    st.image(data_point['image'].numpy().transpose(1, 2, 0), caption=f"Idx {idx}: {lbl}")
+        if st.session_state.get(f"data_explorer_siamese_{id}", False):
+            l, r = st.columns(2)
+            with l:
+                st.text(f"Inliers ({len(datapoints)})")
+                image_view(indices_fids, datapoints)
+            
+            siamese_indices_fids = st.session_state.get(f"siamese_indices_{id}", [])
+            siamese_datapoints = st.session_state.get(f"siamese_data_points_{id}", [])
+            
+            with r:
+                st.text(f"Outliers ({len(siamese_datapoints)})")
+                image_view(siamese_indices_fids, siamese_datapoints, True)
+        else:
+            image_view(indices_fids, datapoints)
 
 def render_experiment_selector(id: int, experiments: list[LossLandscapeExperiment]):
     
