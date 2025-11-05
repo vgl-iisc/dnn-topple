@@ -23,3 +23,6 @@ out*.txt
 
 # vis out
 saved_states/state_*.pkl
+
+# run bash scripts
+run_*.sh
