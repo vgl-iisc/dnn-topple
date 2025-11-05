@@ -296,6 +296,8 @@ def compute_feature_map(exp: LossLandscapeExperiment, features: list[RichFeature
 
     for feat in features:
         if len(feat.class_counts) == 0:
+            feat.majority_class = labels[feat.frm]
+            feat.major_class_size = 0
             continue
         
         feat.majority_class = max(list(feat.class_counts.keys()), key=lambda k: feat.class_counts[k])

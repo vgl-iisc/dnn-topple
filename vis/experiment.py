@@ -47,6 +47,7 @@ class LossLandscapeExperiment:
         self.paths = None
 
         self.layer_tag = f"{layer}"
+        self.pretty_layer = self.layer_tag[1:]
         self.epoch_tag = f"e{epoch}"
         self.model_data = f"{self.model}_{self.dataset.name}"
         
@@ -54,7 +55,7 @@ class LossLandscapeExperiment:
         return hash((self.dataset.name, self.split, self.model, self.k, self.epoch, self.layer))
 
     def __repr__(self) -> str:
-        return f"{self.model} ({self.dataset.name}-{self.split}), k={self.k}, layer={self.layer}, epoch={self.epoch}"
+        return f"{self.model} ({self.dataset.name}-{self.split}), k={self.k}, layer={self.pretty_layer}, epoch={self.epoch}"
     
     def get_paths(self, data_dir, ct_dir) -> dict:
         self.paths = {

@@ -86,6 +86,10 @@ def float_input(key: str, label: str, default: float, min_value = None, max_valu
 @st.fragment
 def render_experiment(id: int, half_width: bool):
 
+    def remove_experiment():
+        st.session_state.exp_ids.remove(id)
+        st.rerun(scope="app")
+
     _, experiments = find_available_experiments()
     
     a, b = st.columns([20, 1], vertical_alignment="bottom", gap="small")
@@ -94,8 +98,9 @@ def render_experiment(id: int, half_width: bool):
         exp = render_experiment_selector(id, experiments)
     with b:
         with st.container(horizontal_alignment="right"):
-            st.button("X", on_click=lambda: st.session_state.exp_ids.remove(id), key=f"remove_experiment_button_{id}")
-    
+            if st.button("X", key=f"remove_experiment_button_{id}"):
+                remove_experiment()
+
     if exp is None:
         st.warning("No experiment selected.")
         return
@@ -115,47 +120,11 @@ def render_experiment(id: int, half_width: bool):
         
         st.altair_chart(chart, use_container_width=True)
         
-        # state_tol = float_input(key=f"tol_steady_{id}", label="Steady Simplification State Coverage Threshold", default=0.002, min_value=0.0, max_value=100.0, step=0.001,
-        #                         help="Minimum proportion of the range of thresholds for which the number of minima should remain constant for a simplification to be considered steady.")
-        
-        # try:
-        #     state_tol = float(state_tol)
-        # except ValueError:
-        #     st.error("Tolerance must be a valid number.")
-        #     st.session_state[f"tol_steady_{id}"] = "0.002"
-        #     state_tol = 0.002
-            
-        # if state_tol < 0.0 or state_tol > 100.0:
-        #     st.error("Tolerance must be between 0 and 100.")
-        #     st.session_state[f"tol_steady_{id}"] = "0.002"
-        #     state_tol = 0.002
-        
-        # steady_thresh, steady_minima = get_steady_simplification_states(exp, state_tol / 100.0)
-        
-        # if f"feats_{id}" not in st.session_state:
-        #     st.session_state[f"feats_{id}"] = None
-        
-        # max_wt = get_steady_simplification_states(exp, 0.0)[0][-1][1]
-
-        # df = pd.DataFrame({"Steady Threshold Start": [t[0] for t in steady_thresh], "Steady Threshold End": [t[1] for t in steady_thresh],
-        #                    "Persistence": [t[1] - t[0] for t in steady_thresh], "Extremity": [steady_minima[i - 1] - n if i > 0 else 0 for i, n in enumerate(steady_minima)], 
-        #                    "Number of Valleys": steady_minima})
-        
-        # st.dataframe(df)
-
-    # pick start+eps of first steady state as default simplification ("denoising" justification)
-    # simpl_def = steady_thresh[0][0] + (steady_thresh[0][1] - steady_thresh[0][0]) / 100 if len(steady_thresh) > 0 else max_wt / 2.0
-    simpl_def = 0.0
     simpl_key = f"simpl_thresh_{id}"
 
-    if simpl_key not in st.session_state:
-        st.session_state[simpl_key] = simpl_def
-
-    simpl = st.number_input("Simplification Threshold", max_value=500.0, step=0.0001, key=simpl_key, format="%0.32f")
+    simpl = st.number_input("Simplification Threshold", value=0.0, max_value=500.0, step=0.0001, key=simpl_key, format="%0.32f")
 
     with st.container(horizontal=True, horizontal_alignment="center") as c:
-        st.button("Reset Simplification", on_click=lambda: st.session_state.update({simpl_key: simpl_def}), key=f"reset_button_{id}")
-
         if st.button("Compute Tree and Coverage", key=f"compute_button_{id}"):
             compute_arcs_and_coverage(id, simpl)
 

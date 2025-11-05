@@ -302,8 +302,7 @@ def render_coverage_map(id: int):
     
     filtered_features: list[RichFeature] = st.session_state.get(f"filtered_feats_{id}", [])
     selection: list[int] = st.session_state.get(f"explorer_selected_arcs_{id}", [])
-    st.session_state[f"dataset_obj_{id}"] = load_dataset(exp)
-    ds = st.session_state[f"dataset_obj_{id}"]
+    ds = load_dataset(exp)
 
     if len(selection) == 0:
         selection = [f.id for f in filtered_features]
@@ -314,7 +313,6 @@ def render_coverage_map(id: int):
     if len(focused_feat_ids) > 0:
         selection = focused_feat_ids
     selection = list(set(selection))
-    st.text(f"Selected Features: {','.join([str(f) for f in selection])}")
 
     f2c, acc, c2f, f2m, datex = st.tabs(["Feature to Class", "Accuracy", "Class to Feature", "Feature to Members", "Data Explorer"])
     selected_features = [features[fid] for fid in selection]
@@ -366,53 +364,78 @@ def render_coverage_map(id: int):
         st.altair_chart(heat, use_container_width=True, key=f"confusion_heatmap_{id}")
         
     with c2f:
-        selected_class = st.selectbox("Class", options=exp.dataset.classes, key=f"class_selector_c2f_{id}")
-        selected_class_idx = exp.dataset.classes.index(selected_class)
+        selected_classes = st.multiselect("Co-Occurrences", options=exp.dataset.classes, default=[], key=f"class_selector_c2f_{id}")
+        selected_labels = set(exp.dataset.classes.index(c) for c in selected_classes)
         
         entries = []
         
-        for f in features:            
-            if selected_class_idx in f.class_counts:
-                share = f.class_counts[selected_class_idx] / f.size
-                coverage = f.class_coverage[selected_class_idx]
+        for f in features:
+            if not all([lab in f.class_counts for lab in selected_labels]) or len(selected_labels) == 0:
+                continue
+            
+            share = sum([f.class_counts[lab] for lab in selected_labels]) / f.size
+            coverage = sum([f.class_counts[lab] for lab in selected_labels]) / sum([exp.dataset.class_size_by_split[exp.split][exp.dataset.classes[lab]] for lab in selected_labels])
+            
+            top_5_classes = sorted(f.class_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+            
+            entries.append({
+                "ID": f.id,
+                "Type": f.type_string,
+                "Size": f.size,
+                "Share": share,
+                "Coverage": coverage,
+                "Top 5": ', '.join([f"{exp.dataset.classes[cid]} ({cnt})" for cid, cnt in top_5_classes])
+            })
                 
-                top_5_classes = sorted(f.class_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-                
-                entries.append({
-                    "ID": f.id,
-                    "Type": f.type_string,
-                    "Size": f.size,
-                    "Share": share,
-                    "Coverage": coverage,
-                    "Top 5": ', '.join([f"{exp.dataset.classes[cid]} ({cnt})" for cid, cnt in top_5_classes])
-                })
-                
-        assert len(entries) > 0, "No entries for selected class"
-        df = pd.DataFrame(entries).sort_values(by=["Coverage", "ID"], ascending=[False, True])
-        df["Share"] = df["Share"].map("{:.3%}".format)
-        df["Coverage"] = df["Coverage"].map("{:.3%}".format)
-        st.dataframe(df, use_container_width=True, key=f"class_to_feature_table_{id}", hide_index=True)
+        if len(entries) == 0:
+            st.warning("No features contain the selected class(es).")
+        else:
+            df = pd.DataFrame(entries).sort_values(by=["Coverage", "ID"], ascending=[False, True])
+            df["Share"] = df["Share"].map("{:.3%}".format)
+            df["Coverage"] = df["Coverage"].map("{:.3%}".format)
+            st.dataframe(df, use_container_width=True, key=f"class_to_feature_table_{id}", hide_index=True)
         
     with f2m:
+        classes = exp.dataset.classes
+        selected_classes = st.multiselect("Filter Classes", options=classes, default=classes, key=f"member_classes_selector_f2m_{id}")
+        selected_labels = set(classes.index(c) for c in selected_classes)
+        f2m_features = [f for f in selected_features if any([lab in selected_labels for lab in f.class_counts.keys()])]
+        
         with st.container(height=600):
-            for f in selected_features:
-                with st.expander(f"**Feature ID {f.id}** (Type: {f.type_string}, Persistence: {f.pers:0.4f}, Size: {f.size}, Majority Class: {exp.dataset.classes[f.majority_class]})"):
-                    st.text(', '.join([str(n) for n in f.members]))
+            for f in f2m_features:
+                relevant_members = [n for n in f.members if node2label[n] in selected_labels]
+                
+                with st.expander(f"Feature {f.id} ({len(relevant_members)} / {f.size})", expanded=False):
+                    st.write(",".join(map(str, relevant_members)))
         
     with datex:
         cs_idx = st.text_input("Data Indices (comma-separated)", key=f"data_explorer_indices_{id}", value="")
-        if st.button("Load Data Points", key=f"load_data_points_{id}"):
-            indices = []
-            for part in cs_idx.split(","):
-                part = part.strip()
-                if part.isdigit():
-                    indices.append(int(part))
+        selected_classes = st.multiselect("Filter Classes", options=classes, default=classes, key=f"member_classes_selector_datex_{id}")
+        selected_labels = set(classes.index(c) for c in selected_classes)
+        
+        def load_from_indices(indices: list[int]):
+            st.session_state[f"loaded_indices_{id}"] = indices
+            st.session_state[f"loaded_data_points_{id}"] = [ds[i] for i in indices if node2label[i] in selected_labels]
+        
+        with st.container(horizontal=True):
+            if st.button("Load Data Points", key=f"load_data_points_{id}"):
+                indices = []
+                for part in cs_idx.split(","):
+                    part = part.strip()
+                    if part.isdigit():
+                        indices.append(int(part))
+                        
+                if any([i < 0 or i >= len(ds) for i in indices]):
+                    st.error("One or more indices are out of bounds.")    
+                else:
+                    load_from_indices(indices)
                     
-            if any([i < 0 or i >= len(ds) for i in indices]):
-                st.error("One or more indices are out of bounds.")    
-            else:
-                st.session_state[f"loaded_indices_{id}"] = indices
-                st.session_state[f"loaded_data_points_{id}"] = [ds[i] for i in indices]
+            if st.button("Load from Selected Features", key=f"load_from_features_{id}"):
+                indices = set()
+                for f in selected_features:
+                    indices = indices.union(set(f.members))
+                indices = sorted(list(indices))
+                load_from_indices(indices)
 
         indices = st.session_state.get(f"loaded_indices_{id}", [])
         datapoints = st.session_state.get(f"loaded_data_points_{id}", [])
@@ -427,27 +450,28 @@ def render_coverage_map(id: int):
 
 def render_experiment_selector(id: int, experiments: list[LossLandscapeExperiment]):
     
+    def invalidate_experiment_view():
+        st.session_state[f"feats_{id}"] = None
+        st.session_state[f"preds_{id}"] = None
+        st.session_state[f"computed_simpl_{id}"] = 0.0
+        st.session_state[f"node2feat_{id}"] = None
+        st.session_state[f"ctdata_{id}"] = None
+        st.session_state[f"tree_graph_{id}"] = None
+        st.session_state.pop(f"loaded_indices_{id}", None)
+        st.session_state.pop(f"loaded_data_points_{id}", None)
+    
     possible_experiments = experiments
     possible_datasets = list(set(map(lambda exp: exp.dataset.name, possible_experiments)))
     
     with st.container(horizontal=True, vertical_alignment="center", gap="medium") as c:
-        selected_dataset = st.selectbox("Dataset", options=["None"] + possible_datasets, key=f"experiment_dataset_selector_{id}")
-        
-        if selected_dataset == "None":
-            return 
-        
+        selected_dataset = st.selectbox("Dataset", options=possible_datasets, key=f"experiment_dataset_selector_{id}", on_change=invalidate_experiment_view)
+                
         possible_splits = list(set([exp.split for exp in possible_experiments if exp.dataset.name == selected_dataset]))
-        selected_split = st.selectbox("Split", options=["None"] + possible_splits, key=f"experiment_split_selector_{id}")
-        
-        if selected_split == "None":
-            return
-        
+        selected_split = st.selectbox("Split", options=possible_splits, key=f"experiment_split_selector_{id}", on_change=invalidate_experiment_view)
+                
         possible_models = list(set([exp.model for exp in possible_experiments if exp.dataset.name == selected_dataset and exp.split == selected_split]))
-        selected_model = st.selectbox("Model", options=["None"] + possible_models, key=f"experiment_model_selector_{id}")
-        
-        if selected_model == "None":
-            return
-        
+        selected_model = st.selectbox("Model", options=possible_models, key=f"experiment_model_selector_{id}", on_change=invalidate_experiment_view)
+                
         # possible_ks = list(set([exp.k for exp in possible_experiments if exp.dataset.name == selected_dataset and exp.split == selected_split and exp.model == selected_model]))
         # selected_k = st.selectbox("k", options=["None"] + possible_ks, key=f"experiment_k_selector_{id}")
         selected_k = 20
@@ -457,20 +481,14 @@ def render_experiment_selector(id: int, experiments: list[LossLandscapeExperimen
 
         possible_epochs = sorted(list(set([exp.epoch for exp in possible_experiments if exp.dataset.name == selected_dataset and exp.split == selected_split and
                                     exp.model == selected_model and exp.k == selected_k])))
-        selected_epoch = st.selectbox("Epoch", options=["None"] + possible_epochs, key=f"experiment_epoch_selector_{id}")
-        
-        if selected_epoch == "None":
-            return
+        selected_epoch = st.selectbox("Epoch", options=possible_epochs, key=f"experiment_epoch_selector_{id}", on_change=invalidate_experiment_view)
 
-        possible_layers = sorted(list(set([exp.layer for exp in possible_experiments if exp.dataset.name == selected_dataset and exp.split == selected_split and
+        possible_layers = sorted(list(set([exp.pretty_layer for exp in possible_experiments if exp.dataset.name == selected_dataset and exp.split == selected_split and
                                     exp.model == selected_model and exp.k == selected_k and exp.epoch == selected_epoch])))
-        selected_layer = st.selectbox("Layer", options=["None"] + possible_layers, key=f"experiment_layer_selector_{id}")
-        
-        if selected_layer == "None":
-            return
-        
-        selected_experiment = next((exp for exp in possible_experiments if exp.dataset.name == selected_dataset and exp.split == selected_split and 
-                                    exp.model == selected_model and exp.k == selected_k and exp.epoch == selected_epoch and exp.layer == selected_layer), None)
+        selected_layer = st.selectbox("Layer", options=possible_layers, key=f"experiment_layer_selector_{id}", on_change=invalidate_experiment_view)
+
+        selected_experiment = next((exp for exp in possible_experiments if exp.dataset.name == selected_dataset and exp.split == selected_split and
+                                    exp.model == selected_model and exp.k == selected_k and exp.epoch == selected_epoch and exp.pretty_layer == selected_layer), None)
     
     return selected_experiment
         
