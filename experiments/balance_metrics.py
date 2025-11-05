@@ -16,19 +16,17 @@ import vis.vis_utils as vu
 
 import matplotlib.pyplot as plt
 
-METRICS = ["average_branching_factor", "colless_index", "sackin_index", "total_cophenetic_index"]
+METRICS = ["average_branching_factor", "colless_index", "sackin_index", "total_cophenetic_index", "average_colless_index", "average_sackin_index", "average_total_cophenetic_index"]
 # THRESH_SELECTION = "valley=classes"
 THRESH_SELECTION = 1e-2
 
-def plot_epoch_metrics_vs_accuracies(csv_path: str, out_dir: str, ignore_percentile: float = 0.0):
+def plot_epoch_metrics_vs_accuracies(csv_path: str, out_dir: str, ignore_percentile: float = 0.0, ignore_std: float = 0.0):
 	df = pd.read_csv(csv_path)
 
 	epoch_vs_acc_path = os.path.join(out_dir, "epoch_vs_accuracy")
-	epoch_vs_metrics_path = os.path.join(out_dir, "epoch_vs_metrics")
 	merged_path = os.path.join(out_dir, "merged_plots")
  
 	os.makedirs(epoch_vs_acc_path, exist_ok=True)
-	os.makedirs(epoch_vs_metrics_path, exist_ok=True)
 	os.makedirs(merged_path, exist_ok=True)
 
 	base_filename = lambda ds, model, k, layer, split, thresh_mode: f"{model}_{ds}_{split}_k{k}_{layer}_{thresh_mode}"
@@ -50,26 +48,18 @@ def plot_epoch_metrics_vs_accuracies(csv_path: str, out_dir: str, ignore_percent
 					continue
 				print(f"Ignoring above {ignore_percentile} percentile value {threshold} for metric {metric} on {name}")
 				group = group[group[metric] < threshold]
-  
-		fig, (ax1, ax2) = plt.subplots(1, 2)
-		ax1.plot(group['epoch'], group['train_acc'], label='Train Accuracy')
-		ax1.plot(group['epoch'], group['val_acc'], label='Val Accuracy')
+    
+		if ignore_std > 0.0:
+			group = group.copy()
 
-		ax1.set_xlabel('Epoch')
-		ax1.set_ylabel('Accuracy')
-		ax1.set_title('Epoch vs Accuracy')
-		ax1.legend()
-  
-		for metric in METRICS:
-			ax2.plot(group['epoch'], group[metric], label=metric)
-		ax2.set_xlabel('Epoch')
-		ax2.set_title('Epoch vs Tree Imbalance Metrics')
-		ax2.legend()  
-  
-		fig.tight_layout()
-		fig.savefig(os.path.join(merged_path, f"{base_filename(ds, model, k, layer, split, thresh_selection)}_merged.png"))
-		plt.close(fig)
-  
+			for metric in METRICS:
+				mean = group[metric].mean()
+				std = group[metric].std()
+				upper_bound = mean + ignore_std * std
+				lower_bound = mean - ignore_std * std
+				print(f"Ignoring values outside {ignore_std} std dev ({lower_bound}, {upper_bound}) for metric {metric} on {name}")
+				group = group[(group[metric] >= lower_bound) & (group[metric] <= upper_bound)]
+    
 		fig = plt.figure()
 		plt.plot(group['epoch'], group['train_acc'], label='Train Accuracy')
 		plt.plot(group['epoch'], group['val_acc'], label='Val Accuracy')
@@ -77,40 +67,52 @@ def plot_epoch_metrics_vs_accuracies(csv_path: str, out_dir: str, ignore_percent
 		plt.ylabel('Accuracy')	
 		plt.title('Epoch vs Accuracy')
 		plt.legend()
+		fig.tight_layout()
 		fig.savefig(os.path.join(epoch_vs_acc_path, f"{base_filename(ds, model, k, layer, split, thresh_selection)}_accuracy.png"))
 		plt.close(fig)
-  
-		fig = plt.figure()
+     
 		for metric in METRICS:
-			plt.plot(group['epoch'], group[metric], label=metric)
-		plt.xlabel('Epoch')
-		plt.title('Epoch vs Tree Imbalance Metrics')
-		plt.legend()
-		fig.savefig(os.path.join(epoch_vs_metrics_path, f"{base_filename(ds, model, k, layer, split, thresh_selection)}_metrics.png"))
-		plt.close(fig)
-  
-		for metric in METRICS:
-			path_metric_vs_acc = os.path.join(out_dir, f"{metric}_vs_accuracy")
-			os.makedirs(path_metric_vs_acc, exist_ok=True)
+			path_acc_vs_metric = os.path.join(out_dir, f"accuracy_vs_{metric}")
+			os.makedirs(path_acc_vs_metric, exist_ok=True)
       
 			fig = plt.figure()
-			plt.scatter(group[metric], group['train_acc'], label='Train Accuracy')
-			plt.scatter(group[metric], group['val_acc'], label='Val Accuracy')
-			plt.xlabel(metric)
-			plt.ylabel('Accuracy')
-			plt.title(f'{metric} vs Accuracy')
+			plt.scatter(group['train_acc'], group[metric], label='Train Accuracy')
+			plt.scatter(group['val_acc'], group[metric], label='Val Accuracy')
+			plt.xlabel('Accuracy')
+			plt.ylabel(metric)
+			plt.title(f'Accuracy vs {metric}')
 			plt.legend()
-			fig.savefig(os.path.join(path_metric_vs_acc, f"{base_filename(ds, model, k, layer, split, thresh_selection)}.png"))
+			fig.tight_layout()	
+			fig.savefig(os.path.join(path_acc_vs_metric, f"{base_filename(ds, model, k, layer, split, thresh_selection)}.png"))
 			plt.close(fig)
    
-			path_metric_vs_epoch = os.path.join(out_dir, f"{metric}_vs_epoch")
-			os.makedirs(path_metric_vs_epoch, exist_ok=True)
+			path_epoch_vs_metric = os.path.join(out_dir, f"epoch_vs_{metric}")
+			os.makedirs(path_epoch_vs_metric, exist_ok=True)
 			fig = plt.figure()
 			plt.plot(group['epoch'], group[metric], label=metric)
 			plt.xlabel('Epoch')
 			plt.title(f'Epoch vs {metric}')
 			plt.legend()
-			fig.savefig(os.path.join(path_metric_vs_epoch, f"{base_filename(ds, model, k, layer, split, thresh_selection)}.png"))
+			fig.tight_layout()
+			fig.savefig(os.path.join(path_epoch_vs_metric, f"{base_filename(ds, model, k, layer, split, thresh_selection)}.png"))
+			plt.close(fig)
+   
+			path_epoch_vs_metric_acc = os.path.join(merged_path, f"epoch_vs_{metric}_and_accuracy")
+			os.makedirs(path_epoch_vs_metric_acc, exist_ok=True)
+			fig, ax1 = plt.subplots()
+			color = 'tab:blue'
+			ax1.set_xlabel('Epoch')
+			ax1.set_ylabel(metric, color=color)
+			ax1.plot(group['epoch'], group[metric], color=color, label=metric)
+			ax1.tick_params(axis='y', labelcolor=color)
+			ax2 = ax1.twinx()
+			color = 'tab:orange'
+			ax2.set_ylabel('Accuracy', color=color)
+			ax2.plot(group['epoch'], group['train_acc'], color='green', label='Train Accuracy')
+			ax2.plot(group['epoch'], group['val_acc'], color='orange', label='Val Accuracy')
+			ax2.tick_params(axis='y', labelcolor=color)
+			fig.tight_layout()
+			fig.savefig(os.path.join(path_epoch_vs_metric_acc, f"{base_filename(ds, model, k, layer, split, thresh_selection)}.png"))
 			plt.close(fig)
 
 def main(datasets_dir: str, data_dir: str, ct_dir: str, output_path: str) -> None:
@@ -148,6 +150,12 @@ def main(datasets_dir: str, data_dir: str, ct_dir: str, output_path: str) -> Non
 
 		accuracy = process_file(paths["compiled_res"], experiment.epoch)
 
+		mv_tuples = list(metrics.items())
+
+		for metric, val in mv_tuples:
+			if not metric.startswith("average_"):
+				metrics[f"average_{metric}"] = val / tree.number_of_nodes() if tree.number_of_nodes() > 0 else np.nan
+
 		result = {
 			"dataset": experiment.dataset.name,
 			"split": experiment.split,
@@ -160,7 +168,7 @@ def main(datasets_dir: str, data_dir: str, ct_dir: str, output_path: str) -> Non
 			"node_count": tree.number_of_nodes(),
 			**metrics
 		}
-  
+
 		result["train_acc"] = accuracy.loc[accuracy['Split'] == 'Train', 'accuracy'].values[0] if 'Train' in accuracy['Split'].values else np.nan
 		result["val_acc"] = accuracy.loc[accuracy['Split'] == 'Val', 'accuracy'].values[0] if 'Val' in accuracy['Split'].values else np.nan
 
@@ -169,7 +177,7 @@ def main(datasets_dir: str, data_dir: str, ct_dir: str, output_path: str) -> Non
 	results_df = pd.DataFrame(results)
 	results_df.to_csv(output_path, index=False)
 	print(f"Results saved to {output_path}")
- 
+
 if __name__ == "__main__":
 	import argparse
 
