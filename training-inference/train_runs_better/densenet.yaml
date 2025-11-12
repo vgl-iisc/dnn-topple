@@ -1,0 +1,15 @@
+runs:
+  densenet_cifar:
+    seed: 1759764157
+    dataset: cifar
+
+  densenet_mnist:
+    seed: 1759764232
+    dataset: mnist
+
+model: densenet121
+batch_size: 128
+epochs: 200
+lr: 0.001
+momentum: 0.9
+weight_decay: 0.0005

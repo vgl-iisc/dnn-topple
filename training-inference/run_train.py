@@ -142,6 +142,7 @@ def do_run(cfg, device, tboard_base, checkpoints_base):
 
 	criterion = nn.CrossEntropyLoss()
 	optimizer = make_optimizer(model, cfg)
+	scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
 
 	writer = SummaryWriter(tboard_base)
 
@@ -163,6 +164,7 @@ def do_run(cfg, device, tboard_base, checkpoints_base):
 		t0 = time.time()
 		logger.info(f'--- Epoch {epoch}/{epochs} ---')
 		train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, epoch, writer)
+		scheduler.step()
 		logger.info('Evaluating on validation set...')
 		val_loss, val_acc = validate(model, test_loader, criterion, device)
 

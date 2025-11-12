@@ -1,0 +1,15 @@
+runs:
+  wres_cifar:
+    seed: 1759764369
+    dataset: cifar
+
+  wres_mnist:
+    seed: 1759764371
+    dataset: mnist
+
+model: wide_resnet50_2
+batch_size: 128
+epochs: 200
+lr: 0.001
+momentum: 0.9
+weight_decay: 0.0005

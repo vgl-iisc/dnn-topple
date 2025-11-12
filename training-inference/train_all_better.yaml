@@ -1,0 +1,19 @@
+datasets: 
+  cifar: ./datasets/cifar/data
+  mnist: ./datasets/mnist/data
+
+do:
+  - vgg_mnist
+  - densenet_mnist
+  - vgg_cifar
+  - densenet_cifar
+  - resnet_cifar
+  - resnet_mnist
+  - wres_cifar
+  - wres_mnist
+
+config:
+  tensorboard_dir: /media/solis/DATA/Santripta/Training_better/tensorboard
+  checkpoint_dir: /media/solis/DATA/Santripta/Training_better/checkpoints
+  experiments_dir: ./training-inference/train_runs_better
+  device: cuda
