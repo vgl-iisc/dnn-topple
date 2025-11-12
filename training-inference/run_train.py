@@ -49,7 +49,7 @@ def get_dataloaders(cfg):
 	ds = cfg["dataset"]
 	batch_size = cfg["batch_size"]
 
-	if ds == 'cifar10':
+	if ds == 'cifar10' or ds == 'cifar':
 		train_tf, _ = cifar10_loader.get_cifar10_transforms()
 		train_loader, test_loader = cifar10_loader.make_cifar10_dataloaders(
 			cfg['data_root'], batch_size=batch_size, transform=train_tf, shuffle=True
@@ -222,7 +222,7 @@ def main(argv=None):
 
 	runs = {}
 
-	train_runs_dir = global_cfg["experiments_dir"]
+	train_runs_dir = global_cfg["config"]["experiments_dir"]
 	for run_file in os.listdir(train_runs_dir):
 		if not run_file.endswith('.yaml'):
 			continue
