@@ -1,0 +1,47 @@
+resnet:
+  - al1-b0-c1
+  - al1-b0-bn1
+  - al1-b0-relu
+  - al1-b0-c2
+  - al1-b0-bn2
+  - al1-b1-c1
+  - al1-b1-bn1
+  - al1-b1-relu
+  - al1-b1-c2
+  - al1-b1-bn2
+  - al4-b0-c1
+  - al4-b0-bn1
+  - al4-b0-relu
+  - al4-b0-c2
+  - al4-b0-bn2
+  - al4-b0-downsample-conv
+  - al4-b0-downsample-bn
+  - al4-b1-c1
+  - al4-b1-bn1
+  - al4-b1-relu
+  - al4-b1-c2
+  - al4-b1-bn2
+  - aavgpool
+  - afc
+
+vgg:
+  - ablock1-conv1
+  - ablock1-relu1
+  - ablock1-conv2
+  - ablock1-relu2
+  - ablock1-pool
+  - ablock5-conv1
+  - ablock5-relu1
+  - ablock5-conv2
+  - ablock5-relu2
+  - ablock5-conv3
+  - ablock5-relu3
+  - ablock5-pool
+  - aavgpool
+  - afc1
+  - afc1-relu
+  - afc1-dropout
+  - afc2
+  - afc2-relu
+  - afc2-dropout
+  - afc3

@@ -1,4 +1,3 @@
-from itertools import combinations
 import networkx as nx
 import numpy as np
 
@@ -23,8 +22,8 @@ def average_branching_factor(tree: nx.DiGraph) -> float:
 	avg_branching_factor = total_children / len(internal_nodes)
 	return avg_branching_factor
 
-def colless_index(tree: nx.DiGraph) -> tuple[float, int]:
-	"""Compute the Colless index of a rooted (reversed) binary tree.
+def colless_index(tree: nx.DiGraph) -> tuple[float, float, int, int]:
+	"""Compute the Colless index of a rooted (reversed) binary tree. Augmented for contour trees.
 
 	The Colless index is a measure of tree imbalance. It is defined as the sum
 	of the absolute differences in sizes of the left and right subtrees for all
@@ -37,6 +36,7 @@ def colless_index(tree: nx.DiGraph) -> tuple[float, int]:
 		float: The Colless index of the tree.
 	"""
 	colless_sum = 0.0
+	colless_nodes = 0
 	missing = 0
 
 	rev = tree.reverse()
@@ -44,49 +44,29 @@ def colless_index(tree: nx.DiGraph) -> tuple[float, int]:
 	for n in rev.nodes:
 		if rev.out_degree(n) == 2:  # Internal node with two children
 			left_child, right_child = list(rev.successors(n))[:2]
+   
+			left_tree = nx.algorithms.traversal.dfs_tree(rev, left_child)
+			right_tree = nx.algorithms.traversal.dfs_tree(rev, right_child)
+   
+			left_size = 0
+			for edge in left_tree.edges:
+				left_size += rev.get_edge_data(*edge)["volume"]
+    
+			right_size = 0
+			for edge in right_tree.edges:
+				right_size += rev.get_edge_data(*edge)["volume"]
 
-			left_size = nx.algorithms.traversal.dfs_tree(rev, left_child).number_of_nodes()
-			right_size = nx.algorithms.traversal.dfs_tree(rev, right_child).number_of_nodes()
 			colless_sum += abs(left_size - right_size)
+			colless_nodes += 1
 		elif rev.out_degree(n) > 0:
-			print(f"Node {n} is not binary; skipping in Colless index calculation.")
 			missing += 1
 
-	return colless_sum, missing
+	average_colless_sum = colless_sum / colless_nodes if colless_nodes > 0 else np.nan
 
-def total_cophenetic_index(tree: nx.DiGraph) -> float:
-	"""Compute the total cophenetic index of a rooted (reversed) tree.
+	return colless_sum, average_colless_sum, colless_nodes, missing
 
-	The total cophenetic index is defined as the sum of the depths of the
-	least common ancestors (LCAs) for all pairs of leaves in the tree.
-
-	Args:
-		tree (nx.DiGraph): A directed graph representing the rooted tree.
-
-	Returns:
-		float: The total cophenetic index of the tree.
-	"""
-	tree = tree.reverse()
- 
-	root = list(nx.topological_sort(tree))[0]
-	leaves = [n for n in tree.nodes if tree.out_degree(n) == 0]
-	cophenetic_sum = 0.0
- 
-	pairs = combinations(leaves, 2)
-
-	lcas = map(lambda p: p[1], nx.all_pairs_lowest_common_ancestor(tree, pairs))
-	lengths = nx.single_source_shortest_path_length(tree, root)
- 
-	for lca in lcas:
-		if lca not in lengths:
-			print(f"LCA {lca} not found in lengths; skipping.")
-			return np.nan
-		cophenetic_sum += lengths[lca]
-
-	return cophenetic_sum
-
-def sackin_index(tree: nx.DiGraph) -> float:
-	"""Compute Sackin's index of a rooted (reversed) tree.
+def sackin_index(tree: nx.DiGraph) -> tuple[float, float, int]:
+	"""Compute Sackin's index of a rooted (reversed) tree. Augmented for contour trees.
 
 	Sackin's index is defined as the sum of the depths of all leaves in the tree.
 
@@ -95,6 +75,8 @@ def sackin_index(tree: nx.DiGraph) -> float:
 
 	Returns:
 		float: Sackin's index of the tree.
+		float: Average Sackin's index of the tree.
+		int: Number of leaves in the tree.
 	"""
 	
 	rev = tree.reverse()
@@ -103,15 +85,16 @@ def sackin_index(tree: nx.DiGraph) -> float:
 	leaves = [n for n in rev.nodes if rev.out_degree(n) == 0]
 	sackin_sum = 0.0
  
-	lengths = nx.single_source_shortest_path_length(rev, root)
+	paths = nx.single_source_shortest_path(rev, root)
 
 	for leaf in leaves:
-		if leaf not in lengths:
-			print(f"Leaf {leaf} not found in lengths; skipping.")
-			return np.nan
-		sackin_sum += lengths[leaf]
+		path = paths[leaf]
 
-	return sackin_sum
+		for i in range(len(path) - 1):
+			edge_data = rev.get_edge_data(path[i], path[i + 1])
+			sackin_sum += edge_data["volume"]
+
+	return sackin_sum, sackin_sum / len(leaves) if len(leaves) > 0 else np.nan, len(leaves)
 
 def compute_tree_imbalance_metrics(tree: nx.DiGraph) -> dict:
 	"""Compute various tree imbalance metrics for a given tree.
@@ -122,31 +105,30 @@ def compute_tree_imbalance_metrics(tree: nx.DiGraph) -> dict:
 		dict: A dictionary containing the computed metrics.
 	"""
  
-	colless_idx, missing_colless = colless_index(tree)
+	sackin_idx, avg_sackin_idx, leaf_count = sackin_index(tree)
  
-	if missing_colless > 3:
-		print(f"too many non-binary nodes ({missing_colless}); skipping colless.")
-     
-		metrics =  {
-			"average_branching_factor": average_branching_factor(tree),
-			"colless_index": np.nan,
-			"missing_colless": missing_colless,
-			"total_cophenetic_index": total_cophenetic_index(tree),
-			"sackin_index": sackin_index(tree)
-		}
-	else:
-		metrics = {
-			"average_branching_factor": average_branching_factor(tree),
-			"colless_index": colless_idx,
-			"missing_colless": missing_colless,
-			"total_cophenetic_index": total_cophenetic_index(tree),
-			"sackin_index": sackin_index(tree)
-		}
+	colless_idx, avg_colless_idx, total_colless, missing_colless = colless_index(tree)
+	missing_colless_frac = np.nan
+ 
+	if tree.number_of_nodes() - leaf_count > 0:
+		missing_colless_frac = missing_colless / (tree.number_of_nodes() - leaf_count)
   
-	mv_tuples = list(metrics.items())
-
-	for metric, val in mv_tuples:
-		if not metric.startswith("average_"):
-			metrics[f"average_{metric}"] = val / tree.number_of_nodes() if tree.number_of_nodes() > 0 else np.nan
-
+	total_volume = 0
+	for edge in tree.edges:
+		total_volume += tree.get_edge_data(*edge)["volume"]
+  
+	metrics = {
+		"node_count": tree.number_of_nodes(),
+		"average_branching_factor": average_branching_factor(tree),
+		"colless_index": colless_idx,
+		"average_colless_index": avg_colless_idx,
+		"total_colless": total_colless,
+		"missing_colless": missing_colless,
+		"missing_colless_frac": missing_colless_frac,
+		"sackin_index": sackin_idx,
+		"average_sackin_index": avg_sackin_idx,
+		"leaf_count": leaf_count,
+		"total_volume": total_volume
+	}
+  
 	return metrics

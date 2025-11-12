@@ -1,0 +1,32 @@
+densenet:
+  - a8
+  - a7
+  - a6
+  - a5
+  - a4
+  - a3
+  - a2
+  - a1
+
+resnet:
+  - a5
+  - a4
+  - a3
+  - a2
+  - a1
+
+vgg:
+  - a7
+  - a6
+  - a5
+  - a4
+  - a3
+  - a2
+  - a1
+
+wres:
+  - a5
+  - a4
+  - a3
+  - a2
+  - a1

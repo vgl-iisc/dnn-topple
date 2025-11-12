@@ -186,11 +186,12 @@ def simpl_saddles(nxg: nx.DiGraph):
 
 def rooted_tree_from_exp(exp: LossLandscapeExperiment, simpl: float, data_dir: str, ct_dir: str) -> nx.DiGraph:
     features, _ = compute_arc_features(exp, simpl, data_dir, ct_dir)
-    nxg = compute_tree_graph(exp, features, "None", "None", 0, True)
+    compute_feature_map(exp, features, data_dir, ct_dir)
+    nxg = compute_tree_graph(exp, features, "None", "None", 0)
     
     return nxg
 
-def compute_tree_graph(exp: LossLandscapeExperiment, features: list[RichFeature], steiner_mode: str, ego_origin: str, ego_radius: int, simplify_saddles: bool):
+def compute_tree_graph(exp: LossLandscapeExperiment, features: list[RichFeature], steiner_mode: str, ego_origin: str, ego_radius: int, simplify_saddles: bool = False):
     useful_nodes = set()
     minima_nodes = set()
     maxima_nodes = set()
@@ -241,7 +242,7 @@ def compute_tree_graph(exp: LossLandscapeExperiment, features: list[RichFeature]
             
         nxg = full_graph
 
-    if not simplify_saddles:
+    if True:
         return nxg
 
     simpl_saddles(nxg)
@@ -257,14 +258,20 @@ def make_arc_map(features: list[RichFeature]):
     
     return arc_map
 
-def compute_feature_map(exp: LossLandscapeExperiment, features: list[RichFeature], data: ct.ContourTreeData) -> list[int]:
+def compute_feature_map(exp: LossLandscapeExperiment, features: list[RichFeature], data_dir = None, ct_dir = None) -> list[int]:
     """
     Computes a mapping from contour tree node (i.e. an embedded vector for a data point) to the contour tree feature it belongs to and vice versa.
     Also populates rich data in the feature objects.
     """
     
-    ctree_path = exp.get_paths(st.session_state.landscapes_dir, st.session_state.ct_dir)["ctree"]
+    if data_dir is None:
+        data_dir = st.session_state.landscapes_dir
     
+    if ct_dir is None:
+        ct_dir = st.session_state.ct_dir
+
+    ctree_path = exp.get_paths(data_dir, ct_dir)["ctree"]
+
     labels = exp.dataset.labels_by_split[exp.split]
     count = len(labels)
     

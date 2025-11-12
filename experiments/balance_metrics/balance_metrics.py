@@ -4,9 +4,9 @@ import pandas as pd
 import os
 import sys
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scripts')))
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'vis')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'scripts')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'vis')))
 
 from scripts.get_accuracies import process_file
 from scripts.chart_simplification_valleys import get_valley_vs_thresh
@@ -19,10 +19,11 @@ from lmfit.models import ExponentialModel
 import scipy.stats as stats
 
 import matplotlib.pyplot as plt
+from matplotlib.category import UnitData
 
-METRICS = ["average_branching_factor", "colless_index", "sackin_index", "total_cophenetic_index", "average_colless_index", "average_sackin_index", "average_total_cophenetic_index"]
+METRICS = ["average_branching_factor", "colless_index", "sackin_index", "total_volume", "missing_colless_frac"]
 # THRESH_SELECTION = "valley=classes"
-THRESH_SELECTION = 1e-2
+THRESH_SELECTION = 0.0
 
 def get_data(csv_path: str) -> pd.DataFrame:
 	data = pd.read_csv(csv_path)
@@ -56,7 +57,7 @@ def ignore_outliers(df: pd.DataFrame, ignore_percentile: float = 0.0, ignore_std
   
 	return df
 
-def plot_epoch_metrics_vs_accuracies(csv_path: str, out_dir: str, ignore_percentile: float = 0.0, ignore_std: float = 0.0):
+def plot_epoch_metrics_vs_accuracies(csv_path: str, out_dir: str, ignore_percentile: float = 0.0, ignore_std: float = 0.0, metric_scale: str = 'linear'):
 	df = pd.read_csv(csv_path)
 
 	epoch_vs_acc_path = os.path.join(out_dir, "epoch_vs_accuracy")
@@ -66,6 +67,8 @@ def plot_epoch_metrics_vs_accuracies(csv_path: str, out_dir: str, ignore_percent
 	os.makedirs(merged_path, exist_ok=True)
 
 	base_filename = lambda ds, model, k, layer, split, thresh_mode: f"{model}_{ds}_{split}_k{k}_{layer}_{thresh_mode}"
+ 
+	metric_string = lambda m: m if metric_scale == "linear" else f"log {m}"
  
 	for name, group in df.groupby(['dataset', 'model', 'k', 'layer', 'split', 'thresh_mode']):
 		ds, model, k, layer, split, thresh_selection = name
@@ -77,7 +80,7 @@ def plot_epoch_metrics_vs_accuracies(csv_path: str, out_dir: str, ignore_percent
 		plt.plot(group['epoch'], group['train_acc'], label='Train Accuracy')
 		plt.plot(group['epoch'], group['val_acc'], label='Val Accuracy')
 		plt.xlabel('Epoch')
-		plt.ylabel('Accuracy')	
+		plt.ylabel('Accuracy')
 		plt.title('Epoch vs Accuracy')
 		plt.legend()
 		fig.tight_layout()
@@ -86,6 +89,11 @@ def plot_epoch_metrics_vs_accuracies(csv_path: str, out_dir: str, ignore_percent
      
 		for metric in METRICS:
 			path_acc_vs_metric = os.path.join(out_dir, f"accuracy_vs_{metric}")
+   
+			if metric_scale == "log":
+				assert len(group[group[metric] <= 0]) == 0, f"Cannot plot log scale for metric {metric} with non-positive values."
+				plt.yscale('log')
+   
 			os.makedirs(path_acc_vs_metric, exist_ok=True)
       
 			fig = plt.figure()
@@ -93,7 +101,7 @@ def plot_epoch_metrics_vs_accuracies(csv_path: str, out_dir: str, ignore_percent
 			plt.scatter(group['val_acc'], group[metric], label='Val Accuracy')
 			plt.xlabel('Accuracy')
 			plt.ylabel(metric)
-			plt.title(f'Accuracy vs {metric}')
+			plt.title(f'Accuracy vs {metric_string(metric)}')
 			plt.legend()
 			fig.tight_layout()	
 			fig.savefig(os.path.join(path_acc_vs_metric, f"{base_filename(ds, model, k, layer, split, thresh_selection)}.png"))
@@ -104,18 +112,20 @@ def plot_epoch_metrics_vs_accuracies(csv_path: str, out_dir: str, ignore_percent
 			fig = plt.figure()
 			plt.plot(group['epoch'], group[metric], label=metric)
 			plt.xlabel('Epoch')
-			plt.title(f'Epoch vs {metric}')
+			plt.title(f'Epoch vs {metric_string(metric)}')
 			plt.legend()
 			fig.tight_layout()
 			fig.savefig(os.path.join(path_epoch_vs_metric, f"{base_filename(ds, model, k, layer, split, thresh_selection)}.png"))
 			plt.close(fig)
    
 			path_epoch_vs_metric_acc = os.path.join(merged_path, f"epoch_vs_{metric}_and_accuracy")
+   
 			os.makedirs(path_epoch_vs_metric_acc, exist_ok=True)
 			fig, ax1 = plt.subplots()
 			color = 'tab:blue'
 			ax1.set_xlabel('Epoch')
-			ax1.set_ylabel(metric, color=color)
+			ax1.set_ylabel(metric_string(metric), color=color)
+			ax1.set_yscale(metric_scale)
 			ax1.plot(group['epoch'], group[metric], color=color, label=metric)
 			ax1.tick_params(axis='y', labelcolor=color)
 			ax2 = ax1.twinx()
@@ -126,6 +136,37 @@ def plot_epoch_metrics_vs_accuracies(csv_path: str, out_dir: str, ignore_percent
 			ax2.tick_params(axis='y', labelcolor=color)
 			fig.tight_layout()
 			fig.savefig(os.path.join(path_epoch_vs_metric_acc, f"{base_filename(ds, model, k, layer, split, thresh_selection)}.png"))
+			plt.close(fig)
+   
+			plt.yscale('linear')
+
+def plot_layer_metrics(csv_path: str, out_dir: str, layer_order: dict, ignore_percentile: float = 0.0, ignore_std: float = 0.0):
+	df = pd.read_csv(csv_path)
+
+	base_filename = lambda ds, model, k, split, thresh_mode: f"{model}_{ds}_{split}_k{k}_{thresh_mode}"
+ 
+	for name, group in df.groupby(['dataset', 'model', 'k', 'split', 'thresh_mode']):
+		ds, model, k, split, thresh_selection = name
+		
+		group = ignore_outliers(group, ignore_percentile=ignore_percentile, ignore_std=ignore_std)
+		group = group.fillna(-1.0)
+  
+		active_layers = group['layer'].unique()
+		
+		order = layer_order[model]
+		order = list(filter(lambda x: x in active_layers, order))
+       
+		for metric in METRICS:
+			path_epoch_vs_metric = os.path.join(out_dir, f"layer_vs_{metric}")
+			os.makedirs(path_epoch_vs_metric, exist_ok=True)
+			fig = plt.figure()   
+			plt.scatter(group['layer'], group[metric], label=metric)
+			plt.xlabel('Layer')
+			plt.title(f'Layer vs {metric}')
+			plt.legend()
+			plt.xticks(range(len(order)), order, rotation=80)
+			fig.tight_layout()
+			fig.savefig(os.path.join(path_epoch_vs_metric, f"{base_filename(ds, model, k, split, thresh_selection)}.png"))
 			plt.close(fig)
 
 def compute_correlations(data: pd.DataFrame, out_csv: str | None = None, ignore_percentile: float = 0.0, ignore_std: float = 0.0) -> pd.DataFrame:
@@ -216,6 +257,10 @@ def compute_correlations(data: pd.DataFrame, out_csv: str | None = None, ignore_
 def plot_linear_regression(X, y, xlabel: str, ylabel: str, out_path: str) -> None:
 	X = X.values.reshape(-1, 1)
 	y = y.values.reshape(-1, 1)
+ 
+	if len(y) < 3:
+		print(f"Not enough data points ({len(y)}) to fit linear regression for {ylabel} vs {xlabel}. Skipping.")
+		return
 
 	model = LinearRegression()
 	model.fit(X, y)
@@ -335,6 +380,10 @@ def exp_hypothesis(x, a, b, c):
 def plot_exp_regression(X, y, xlabel: str, ylabel: str, out_path: str) -> None:
 	X = X.values
 	y = y.values
+
+	if len(y) < 3:
+		print(f"Not enough data points ({len(y)}) to fit linear regression for {ylabel} vs {xlabel}. Skipping.")
+		return
 
 	regressor = ExponentialModel()
 	res = regressor.fit(y, x=X)
@@ -493,12 +542,13 @@ def main(datasets_dir: str, data_dir: str, ct_dir: str, output_path: str) -> Non
 			"layer": experiment.layer,
 			"thresh": thresh,
 			"thresh_mode": str(THRESH_SELECTION),
-			"node_count": tree.number_of_nodes(),
 			**metrics
 		}
+  
 
 		result["train_acc"] = accuracy.loc[accuracy['Split'] == 'Train', 'accuracy'].values[0] if 'Train' in accuracy['Split'].values else np.nan
 		result["val_acc"] = accuracy.loc[accuracy['Split'] == 'Val', 'accuracy'].values[0] if 'Val' in accuracy['Split'].values else np.nan
+		print(f"result: {result}\n\n")
 
 		results.append(result)
 
@@ -517,7 +567,6 @@ if __name__ == "__main__":
 
 	args = parser.parse_args()
 
-	print(f"Using threshold selection mode: {THRESH_SELECTION}, writing to {args.output_path}, continue?")
-	input()
+	print(f"Using threshold selection mode: {THRESH_SELECTION}, writing to {args.output_path}")
 
 	main(args.datasets_dir, args.data_dir, args.ct_dir, args.output_path)
