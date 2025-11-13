@@ -3,6 +3,7 @@ Goes through all landscapes in the data directory and computes
 (minimally connected) k-NN graphs for each of them, saving them appropriately.
 """
 
+import torch
 from knn_graph import compute_knn_graph
 
 import os
@@ -28,10 +29,19 @@ def main():
             continue
 
         tensor_files = [f for f in files if f.startswith("vectors_") and f.endswith(".txt")]
+        tensor_files_2 = [f for f in files if f.endswith(".pt")]
+        
+        if len(tensor_files_2) > 0:
+            tensor_files = tensor_files_2
 
         for tensor_file in tensor_files:
             tensor_path = os.path.join(root, tensor_file)
-            data = np.loadtxt(tensor_path)
+            
+            if tensor_path.endswith('.pt'):
+                data = torch.load(tensor_path).numpy()
+            else:
+                data = np.loadtxt(tensor_path)
+            
             print(f"Loaded data from {tensor_path} with shape {data.shape}")
 
             # do this as a binary search for the smallest k that gives a connected graph

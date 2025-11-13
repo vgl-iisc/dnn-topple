@@ -12,6 +12,7 @@ You probably don't want to run this directly, but rather use the wrapper script 
 from sklearn.neighbors import kneighbors_graph
 import networkx as nx
 import numpy as np
+import torch
 
 from sys import argv
 import os
@@ -45,7 +46,10 @@ def main():
     n_neighbors = int(argv[2])
     output_graph_file = argv[3]
 
-    data = np.loadtxt(data_file)
+    if data_file.endswith('.pt'):
+        data = torch.load(data_file).numpy()
+    else:
+        data = np.loadtxt(data_file)
     print(f"Loaded data from {data_file} with shape {data.shape}")
 
     G = compute_knn_graph(data, n_neighbors=n_neighbors)
