@@ -39,8 +39,8 @@ def get_cifar10_transforms(image_size: int = 32) -> Tuple[object, object]:
     train_transform = T.Compose([
         T.ToTensor(),
         T.Normalize(CIFAR10_MEAN, CIFAR10_STD),
-        # T.RandomCrop(32, padding=4),
-        # T.RandomHorizontalFlip(),
+        T.RandomCrop(32, padding=4),
+        T.RandomHorizontalFlip(),
     ])
 
     test_transform = T.Compose([
@@ -102,7 +102,8 @@ class Cifar10Dataset(Dataset):
 def make_cifar10_dataloaders(
     data_root: str,
     batch_size: int = 64,
-    transform: Optional[Callable] = None,
+    train_transform: Optional[Callable] = None,
+    test_transform: Optional[Callable] = None,
     shuffle: bool = False,
 ) -> Tuple[DataLoader, DataLoader]:
     """Create train and test DataLoaders for CIFAR-10 stored under `data_root`.
@@ -111,8 +112,8 @@ def make_cifar10_dataloaders(
     If not present, set download=True in the dataset constructor (not done here to
     avoid unexpected network activity).
     """
-    train_ds = Cifar10Dataset(root=data_root, train=True, transform=transform)
-    test_ds = Cifar10Dataset(root=data_root, train=False, transform=transform)
+    train_ds = Cifar10Dataset(root=data_root, train=True, transform=train_transform)
+    test_ds = Cifar10Dataset(root=data_root, train=False, transform=test_transform)
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle)
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=shuffle)

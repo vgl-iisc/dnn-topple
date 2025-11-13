@@ -2,6 +2,7 @@ runs:
   wres_cifar:
     seed: 1759764369
     dataset: cifar
+    lr: 0.01
 
   wres_mnist:
     seed: 1759764371

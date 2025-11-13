@@ -3,14 +3,10 @@ datasets:
   mnist: ./datasets/mnist/data
 
 do:
-  - vgg_cifar
+  # - vgg_cifar
   - densenet_cifar
-  - vgg_mnist
-  - densenet_mnist
   - resnet_cifar
-  - resnet_mnist
   - wres_cifar
-  - wres_mnist
 
 config:
   tensorboard_dir: /media/solis/DATA/Santripta/Training_better/tensorboard

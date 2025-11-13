@@ -50,9 +50,9 @@ def get_dataloaders(cfg):
 	batch_size = cfg["batch_size"]
 
 	if ds == 'cifar10' or ds == 'cifar':
-		train_tf, _ = cifar10_loader.get_cifar10_transforms()
+		train_tf, test_tf = cifar10_loader.get_cifar10_transforms()
 		train_loader, test_loader = cifar10_loader.make_cifar10_dataloaders(
-			cfg['data_root'], batch_size=batch_size, transform=train_tf, shuffle=True
+			cfg['data_root'], batch_size=batch_size, train_transform=train_tf, test_transform=test_tf, shuffle=True
 		)
 	elif ds == 'mnist':
 		train_tf, _ = mnist_loader.get_mnist_transforms()

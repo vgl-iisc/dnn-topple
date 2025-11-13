@@ -2,9 +2,11 @@ runs:
   resnet_cifar:
     seed: 1759764376
     dataset: cifar
+    lr: 0.01
 
   resnet_mnist:
     seed: 1759764379
+    lr: 0.0001
     dataset: mnist
 
 model: resnet18
