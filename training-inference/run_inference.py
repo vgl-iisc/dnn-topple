@@ -32,23 +32,25 @@ def extract_batch(batch):
 	if isinstance(batch, dict):
 		images = batch['image']
 		labels = batch['label']
-		idx = int(batch['index'].item())
+		idxs = batch['index'].to(dtype=torch.uint64)
 	else:
 		images, labels = batch
-		idx = 0
-	return images, labels, idx
+		idxs = torch.tensor([0 for i in range(len(batch))], dtype=torch.uint64)
+	return images, labels, idxs
+
+BATCH_SIZE = 512
 
 def get_dataloaders(dataset, data_root):
 	
 	if dataset == 'cifar10' or dataset == 'cifar':
 		_, test_tf = cifar10_loader.get_cifar10_transforms()
 		train_loader, test_loader = cifar10_loader.make_cifar10_dataloaders(
-			data_root, batch_size=1, transform=test_tf, shuffle=False
+			data_root, batch_size=BATCH_SIZE, train_transform=test_tf, test_transform=test_tf, shuffle=False
 		)
 	elif dataset == 'mnist':
 		_, test_tf = mnist_loader.get_mnist_transforms()
 		train_loader, test_loader = mnist_loader.make_mnist_dataloaders(
-			data_root, batch_size=1, transform=test_tf, shuffle=False
+			data_root, batch_size=BATCH_SIZE, transform=test_tf, shuffle=False
 		)
 	else:
 		raise ValueError(f'Unsupported dataset: {dataset}')
@@ -72,27 +74,28 @@ def infer(model, loader, criterion, device):
 			image = image.to(device)
 			label = label.to(device)
 			output = model(image)
-			loss = criterion(output, label)
 
-			assert image.size(0) == label.size(0) == 1, "Batch size should be 1 for inference"
+			loss = criterion(output, label)
 
 			pred = torch.argmax(output, dim=1)
 
-			losses.append(loss.item())
-			labels.append(label.item())
-			predicted.append(pred.item())
-			correct.append(predicted[-1] == labels[-1])
+			losses.append(loss)
+			labels.append(label)
+			predicted.append(pred)
+			correct.append(pred == label)
 			idxs.append(idx)
    
-	total = len(correct)
-   
+	total = len(loader.dataset)
+	avg_loss = (torch.cat(losses).sum()).item() / total
+	accuracy = torch.cat(correct)
+	accuracy = len(accuracy[accuracy == True]) / total
+
 	return {
-		"loss": sum(losses) / total,
-		"accuracy": correct.count(True) / total,
+		"loss": avg_loss,
+		"accuracy": accuracy,
 		"losses": losses,
 		"labels": labels,
 		"predicted": predicted,
-		"outputs": output,
 		"indices": idxs
 	}
 
@@ -120,8 +123,9 @@ def attach_collection_hooks(model, collection, collected_input_activations):
 		mod = find_module(path)
 		logger.info(f"Attaching hook to {path} with tag {tag}: found {mod.__class__.__name__}")
   
-		hook_fn = lambda m, i, o, tag=tag: collected_input_activations[tag].append(i[0][0].detach().cpu())
-   
+		def hook_fn(m, i, o, tag=tag):
+			collected_input_activations[tag].append(i[0].detach().cpu())
+     
 		hooks.append(mod.register_forward_hook(hook_fn))
   
 	return hooks
@@ -143,16 +147,20 @@ def do_run(dataset, data_root, arch, checkpoints_dir, collection, epochs, output
 		with open(os.path.join(output_root, f"metrics_e{epoch}"), "w") as f:
 			f.write(f"avg loss: {avg_loss}\naccuracy: {accuracy}\n")
   
-		collected_losses = np.array(output['losses'], dtype=np.float64).reshape(-1, 1)
-		np.savetxt(os.path.join(loss_dir, f"losses_e{epoch}.txt"), collected_losses)
+		collected_losses = torch.cat(output["losses"]).detach().cpu().numpy().reshape(-1, 1).squeeze()
+		collected_preds = torch.cat(output["predicted"]).detach().cpu().numpy().reshape(-1, 1).squeeze()
 
-		collected_preds = np.array(output['predicted'], dtype=np.uint64).reshape(-1, 1)
-		np.savetxt(os.path.join(preds_dir, f"predictions_e{epoch}.txt"), collected_preds, fmt='%d')
    
 		for tag, activations in collected_activations.items():
-			collated = torch.stack(activations).detach().cpu().numpy().reshape(len(activations), -1)
+			stacked = torch.cat(activations).detach().cpu()
+			logger.info(f"Activations {tag} shape {stacked.shape}")
+			collated = stacked.reshape(len(stacked), -1)
 			logger.info(f"Writing activations for tag {tag} with shape {collated.shape}")
-			np.savetxt(os.path.join(tens_dir, f"vectors_a{tag}_e{epoch}.txt"), collated)
+			torch.save(collated, os.path.join(tens_dir, f"a{tag}_e{epoch}.pt"))
+		
+		assert collected_losses.shape == collected_preds.shape
+		np.savetxt(os.path.join(loss_dir, f"losses_e{epoch}.txt"), collected_losses)
+		np.savetxt(os.path.join(preds_dir, f"predictions_e{epoch}.txt"), collected_preds, fmt='%d')
   	
 	def write_compiled_csv(epoch_results, output_root):
 		
@@ -168,14 +176,22 @@ def do_run(dataset, data_root, arch, checkpoints_dir, collection, epochs, output
 	
 		for epoch, results in epoch_results.items():
 			for split in results:
-				num_samples = len(results[split]['labels'])
+				res = results[split]
+
+				labels = torch.cat(res['labels']).detach().cpu().numpy()
+				idxs = torch.cat(res['indices']).detach().cpu().numpy()
+				losses = torch.cat(res['losses']).detach().cpu().numpy()
+				preds = torch.cat(res['predicted']).detach().cpu().numpy()
+
+				num_samples = len(labels)
 				data["Epoch_No"].extend([epoch] * num_samples)
 				data["Split"].extend([split] * num_samples)
-				data["Image_Index"].extend(results[split]['indices'])
-				data["Image_Function_value"].extend(results[split]['losses'])
-				data["Original_Label"].extend(results[split]['labels'])
-				data["Predicted_Label"].extend(results[split]['predicted'])
-				data["Correct"].extend(["CORRECT" if c == l else "INCORRECT" for c, l in zip(results[split]['predicted'], results[split]['labels'])])
+
+				data["Image_Index"].extend(idxs)
+				data["Image_Function_value"].extend(losses)
+				data["Original_Label"].extend(labels)
+				data["Predicted_Label"].extend(preds)
+				data["Correct"].extend(["CORRECT" if c == l else "INCORRECT" for c, l in zip(preds, labels)])
 	
 		df = pd.DataFrame(data)
 		df.to_csv(os.path.join(output_root, "compiled_results.csv"), index=False)
@@ -222,7 +238,7 @@ def do_run(dataset, data_root, arch, checkpoints_dir, collection, epochs, output
 		
 		collected_input_activations_train = {}
 		hooks = attach_collection_hooks(model, collection, collected_input_activations_train)
-		criterion = nn.CrossEntropyLoss()
+		criterion = nn.CrossEntropyLoss(reduction="none")
 		train_results = infer(model, train_loader, criterion, device)
 
 		for h in hooks:
@@ -297,6 +313,24 @@ def main(argv=None):
 		checkpoints_dir = os.path.join(base_checkpoints_dir, task)
 		output_root = os.path.join(base_output_root, task)
   
+		biggest_name = None
+		biggest = 0
+		if len(glob("*.pt", root_dir=checkpoints_dir)) == 0:
+			sorted_dirs = sorted(list(os.listdir(checkpoints_dir)))
+			
+			for dir in sorted_dirs:
+				dir_path = os.path.join(checkpoints_dir, dir)
+				if not os.path.isdir(dir_path):
+					continue
+
+				weights = glob("*.pt", root_dir=dir_path)
+				if len(weights) >= biggest:
+					biggest = len(weights)
+					biggest_name = dir
+
+			checkpoints_dir = os.path.join(checkpoints_dir, biggest_name)
+			logger.info(f"found biggest weights dir for {task}: {checkpoints_dir} ({biggest})")
+
 		do_run(dataset, cfg["datasets"][dataset], model, checkpoints_dir, collect, epochs, output_root, device)
 
 		elapsed = time.time() - start_time

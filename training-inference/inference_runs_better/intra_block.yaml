@@ -1,0 +1,153 @@
+datasets: 
+  cifar: ./datasets/cifar/data
+  mnist: ./datasets/mnist/data
+
+epochs:
+  cifar: 
+    - best
+  mnist: 
+    - best
+
+collect:
+  resnet18:
+    - path: layer1[0].conv1
+      tag: l1-b0-c1
+    - path: layer1[0].bn1
+      tag: l1-b0-bn1
+    - path: layer1[0].relu
+      tag: l1-b0-relu
+    - path: layer1[0].conv2
+      tag: l1-b0-c2
+    - path: layer1[0].bn2
+      tag: l1-b0-bn2
+    
+    - path: layer1[1].conv1
+      tag: l1-b1-c1
+    - path: layer1[1].bn1
+      tag: l1-b1-bn1
+    - path: layer1[1].relu
+      tag: l1-b1-relu
+    - path: layer1[1].conv2
+      tag: l1-b1-c2
+    - path: layer1[1].bn2
+      tag: l1-b1-bn2
+
+    - path: layer4[0].conv1
+      tag: l4-b0-c1
+    - path: layer4[0].bn1
+      tag: l4-b0-bn1
+    - path: layer4[0].relu
+      tag: l4-b0-relu
+    - path: layer4[0].conv2
+      tag: l4-b0-c2
+    - path: layer4[0].bn2
+      tag: l4-b0-bn2
+    - path: layer4[0].downsample[0]
+      tag: l4-b0-downsample-conv
+    - path: layer4[0].downsample[1]
+      tag: l4-b0-downsample-bn
+    
+    - path: layer4[1].conv1
+      tag: l4-b1-c1
+    - path: layer4[1].bn1
+      tag: l4-b1-bn1
+    - path: layer4[1].relu
+      tag: l4-b1-relu
+    - path: layer4[1].conv2
+      tag: l4-b1-c2
+    - path: layer4[1].bn2
+      tag: l4-b1-bn2
+
+    - path: avgpool
+      tag: avgpool
+    - path: fc
+      tag: fc
+
+
+  vgg16:
+    - path: features[0]
+      tag: block1-conv1
+    - path: features[1]
+      tag: block1-relu1
+    - path: features[2]
+      tag: block1-conv2
+    - path: features[3]
+      tag: block1-relu2
+    - path: features[4]
+      tag: block1-pool
+    
+    - path: features[24]
+      tag: block5-conv1
+    - path: features[25]
+      tag: block5-relu1
+    - path: features[26]
+      tag: block5-conv2
+    - path: features[27]
+      tag: block5-relu2
+    - path: features[28]
+      tag: block5-conv3
+    - path: features[29]
+      tag: block5-relu3
+    - path: features[30]
+      tag: block5-pool
+    
+    - path: avgpool
+      tag: avgpool
+    - path: classifier[0]
+      tag: fc1
+    - path: classifier[1]
+      tag: fc1-relu
+    - path: classifier[2]
+      tag: fc1-dropout
+    - path: classifier[3]
+      tag: fc2
+    - path: classifier[4]
+      tag: fc2-relu
+    - path: classifier[5]
+      tag: fc2-dropout
+    - path: classifier[6]
+      tag: fc3
+
+
+runs:
+  densenet_cifar:
+    model: densenet121
+    dataset: cifar
+
+  densenet_mnist:
+    model: densenet121
+    dataset: mnist
+
+  resnet_cifar:
+    model: resnet18
+    dataset: cifar
+
+  resnet_mnist:
+    model: resnet18
+    dataset: mnist
+
+  vgg_cifar:
+    model: vgg16
+    dataset: cifar
+
+  vgg_mnist:
+    model: vgg16
+    dataset: mnist
+
+  wres_cifar:
+    model: wide_resnet50_2
+    dataset: cifar
+
+  wres_mnist:
+    model: wide_resnet50_2
+    dataset: mnist
+
+do:
+  # - resnet_cifar
+  # - resnet_mnist
+  # - vgg_cifar
+  - vgg_mnist
+
+checkpoints_dir: /media/solis/DATA/Santripta/Training_better/checkpoints/
+save_dir: /media/santripta/data2/Inference_better/landscape_data_intra_block/
+device: cuda:1
