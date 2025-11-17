@@ -80,14 +80,20 @@ class MnistDataset(Dataset):
     label_tensor is a long (int64) scalar.
     """
 
-    def __init__(self, images_filepath: str, labels_filepath: str, transform: Optional[Callable] = None, permute: bool = True, subset: Optional[int] = None):
+    def __init__(self, images_filepath: str, labels_filepath: str, transform: Optional[Callable] = None, permute: bool = True, subset: Optional[int] = None, random_label_prop: float = 0.0):
         self.images, self.labels = read_images_labels(images_filepath, labels_filepath)
-        
+                
         if transform is not None:
             self.transform = transform
         else:
             self.transform = T.ToTensor()
-
+            
+        if random_label_prop > 0.0:
+            self.labels = np.array(self.labels, dtype=np.uint8)
+            rng = np.random.RandomState(SEED)
+            random_indices = rng.choice(len(self.labels), size=int(len(self.labels) * random_label_prop), replace=False)
+            self.labels[random_indices] = rng.randint(0, 10, size=len(random_indices))
+            
         if subset is not None:
             self.images = self.images[:subset]
             self.labels = self.labels[:subset]
@@ -118,6 +124,7 @@ def make_mnist_dataloaders(
     data_root: str,
     batch_size: int = 64,
     transform: Optional[Callable] = None,
+    random_label_prop: float = 0.0,
     shuffle: bool = False,
 ) -> Tuple[DataLoader, DataLoader]:
     """Create train and test DataLoaders for MNIST IDX files.
@@ -143,7 +150,7 @@ def make_mnist_dataloaders(
     test_images_filepath = join(data_root, "t10k-images.idx3-ubyte")
     test_labels_filepath = join(data_root, "t10k-labels.idx1-ubyte")
 
-    train_ds = MnistDataset(train_images_filepath, train_labels_filepath, transform=transform)
+    train_ds = MnistDataset(train_images_filepath, train_labels_filepath, transform=transform, random_label_prop=random_label_prop)
     test_ds = MnistDataset(test_images_filepath, test_labels_filepath, transform=transform)
 
     train_loader = DataLoader(

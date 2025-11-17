@@ -59,12 +59,17 @@ class Cifar10Dataset(Dataset):
     label_tensor is a long (int64) scalar.
     """
 
-    def __init__(self, root: str, train: bool = True, transform: Optional[Callable] = None, permute: bool = True, subset: Optional[int] = None):
+    def __init__(self, root: str, train: bool = True, transform: Optional[Callable] = None, permute: bool = True, subset: Optional[int] = None, random_label_prop: float = 0.0):
         self.cifar = CIFAR10(root=root, train=train, download=False)
 
         # data has shape (N, H, W, C)
         self.images = np.asarray(self.cifar.data)
         self.labels = np.asarray(self.cifar.targets, dtype=np.int64)
+        
+        if random_label_prop > 0.0:
+            rng = np.random.RandomState(SEED)
+            random_indices = rng.choice(len(self.labels), size=int(len(self.labels) * random_label_prop), replace=False)
+            self.labels[random_indices] = rng.randint(0, len(self.cifar.classes), size=len(random_indices))
         
         if subset is not None:
             self.images = self.images[:subset]
@@ -104,6 +109,7 @@ def make_cifar10_dataloaders(
     batch_size: int = 64,
     train_transform: Optional[Callable] = None,
     test_transform: Optional[Callable] = None,
+    random_label_prop: float = 0.0,
     shuffle: bool = False,
 ) -> Tuple[DataLoader, DataLoader]:
     """Create train and test DataLoaders for CIFAR-10 stored under `data_root`.
@@ -112,7 +118,7 @@ def make_cifar10_dataloaders(
     If not present, set download=True in the dataset constructor (not done here to
     avoid unexpected network activity).
     """
-    train_ds = Cifar10Dataset(root=data_root, train=True, transform=train_transform)
+    train_ds = Cifar10Dataset(root=data_root, train=True, transform=train_transform, random_label_prop=random_label_prop)
     test_ds = Cifar10Dataset(root=data_root, train=False, transform=test_transform)
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle)

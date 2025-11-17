@@ -1,5 +1,4 @@
 """
-
 This script expects a YAML configuration describing the dataset, model,
 and training hyperparameters. 
 Run:
@@ -48,16 +47,19 @@ def extract_batch(batch):
 def get_dataloaders(cfg):
 	ds = cfg["dataset"]
 	batch_size = cfg["batch_size"]
+ 
+	random_prop = cfg.get("random_label_prop", 0.0)
+	logger.info(f'Loader using random label proportion: {random_prop}')
 
 	if ds == 'cifar10' or ds == 'cifar':
 		train_tf, test_tf = cifar10_loader.get_cifar10_transforms()
 		train_loader, test_loader = cifar10_loader.make_cifar10_dataloaders(
-			cfg['data_root'], batch_size=batch_size, train_transform=train_tf, test_transform=test_tf, shuffle=True
+			cfg['data_root'], batch_size=batch_size, train_transform=train_tf, test_transform=test_tf, shuffle=True, random_label_prop=random_prop
 		)
 	elif ds == 'mnist':
 		train_tf, _ = mnist_loader.get_mnist_transforms()
 		train_loader, test_loader = mnist_loader.make_mnist_dataloaders(
-			cfg['data_root'], batch_size=batch_size, transform=train_tf, shuffle=True
+			cfg['data_root'], batch_size=batch_size, transform=train_tf, shuffle=True, random_label_prop=random_prop
 		)
 	else:
 		raise ValueError(f'Unsupported dataset: {ds}')
@@ -222,6 +224,10 @@ def main(argv=None):
 
 	runs = {}
 
+	random_intervals = global_cfg["config"].get("random", None)
+ 
+	logger.info(f'Found random intervals: {random_intervals}')
+ 
 	train_runs_dir = global_cfg["config"]["experiments_dir"]
 	for run_file in os.listdir(train_runs_dir):
 		if not run_file.endswith('.yaml'):
@@ -235,8 +241,18 @@ def main(argv=None):
 				cfg = copy.deepcopy(run_cfg)
 				cfg.pop('runs', None)
 				cfg.update(v)
-				runs[k] = cfg
-				runs[k]["data_root"] = global_cfg["datasets"][runs[k]["dataset"]]
+				run_object = cfg
+				run_object["data_root"] = global_cfg["datasets"][run_object["dataset"]]
+
+				if random_intervals is not None:
+					for prop in random_intervals:
+						run_copy = copy.deepcopy(run_object)
+						run_copy["name"] = f"{k}-r{prop}"
+						run_copy["random_label_prop"] = prop
+						runs[f"{k}-r{prop}"] = run_copy
+				else:
+					run_object["random"] = 0.0
+					runs[k] = run_object
 
 	todo = global_cfg["do"]
 	global_cfg = global_cfg["config"]
@@ -248,6 +264,14 @@ def main(argv=None):
 		global_cfg['checkpoint_dir'] = args.checkpoint_dir
 
 	device = torch.device(global_cfg.get('device', 'cpu'))
+
+	if random_intervals is not None:
+		todo_new = []
+		for name in todo:
+			for prop in random_intervals:
+				todo_new.append(f"{name}-r{prop}")
+    
+		todo = todo_new
 
 	for name in todo:
 		cfg = runs[name]

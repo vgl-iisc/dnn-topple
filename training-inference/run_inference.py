@@ -40,17 +40,17 @@ def extract_batch(batch):
 
 BATCH_SIZE = 512
 
-def get_dataloaders(dataset, data_root):
+def get_dataloaders(dataset, data_root, random_label_prop=0.0):
 	
 	if dataset == 'cifar10' or dataset == 'cifar':
 		_, test_tf = cifar10_loader.get_cifar10_transforms()
 		train_loader, test_loader = cifar10_loader.make_cifar10_dataloaders(
-			data_root, batch_size=BATCH_SIZE, train_transform=test_tf, test_transform=test_tf, shuffle=False
+			data_root, batch_size=BATCH_SIZE, train_transform=test_tf, test_transform=test_tf, shuffle=False, random_label_prop=random_label_prop
 		)
 	elif dataset == 'mnist':
 		_, test_tf = mnist_loader.get_mnist_transforms()
 		train_loader, test_loader = mnist_loader.make_mnist_dataloaders(
-			data_root, batch_size=BATCH_SIZE, transform=test_tf, shuffle=False
+			data_root, batch_size=BATCH_SIZE, transform=test_tf, shuffle=False, random_label_prop=random_label_prop
 		)
 	else:
 		raise ValueError(f'Unsupported dataset: {dataset}')
@@ -130,7 +130,7 @@ def attach_collection_hooks(model, collection, collected_input_activations):
   
 	return hooks
 
-def do_run(dataset, data_root, arch, checkpoints_dir, collection, epochs, output_root, device):
+def do_run(dataset, data_root, arch, checkpoints_dir, collection, epochs, output_root, device, random_prop=0.0):
 	
 	def write_output(split, output, collected_activations, epoch):
 		loss_dir = os.path.join(output_root, "Losses", split)
@@ -196,7 +196,7 @@ def do_run(dataset, data_root, arch, checkpoints_dir, collection, epochs, output
 		df = pd.DataFrame(data)
 		df.to_csv(os.path.join(output_root, "compiled_results.csv"), index=False)
 
-	train_loader, test_loader = get_dataloaders(dataset, data_root)
+	train_loader, test_loader = get_dataloaders(dataset, data_root, random_label_prop=random_prop)
 	num_classes = train_loader.dataset.num_classes
 
 	logger.info(f"Looking for checkpoints in {checkpoints_dir}")
@@ -298,12 +298,32 @@ def main(argv=None):
  
 	todo = cfg["do"]
  
+	random = cfg.get("random", None)
+ 
+	if random is not None:
+		todo_new = []
+		for name in todo:
+			for prop in random:
+				todo_new.append(f"{name}-r{prop}")
+	
+		todo = todo_new
+ 
 	for task in todo:
 		logger.info(f"Starting task: {task}")
-		task_cfg = cfg["runs"][task]
+
+		if random is not None:
+			task_cfg = cfg["runs"][task.split("-r")[0]]
+		else:
+			task_cfg = cfg["runs"][task]
   
 		start_time = time.time()
 
+		random_prop = 0.0
+  
+		if random is not None:
+			random_prop = float(task.split("-r")[-1])
+			logger.info(f"Using random label proportion: {random_prop}")
+  
 		model = task_cfg["model"]
 		dataset = task_cfg["dataset"]
   
@@ -331,7 +351,7 @@ def main(argv=None):
 			checkpoints_dir = os.path.join(checkpoints_dir, biggest_name)
 			logger.info(f"found biggest weights dir for {task}: {checkpoints_dir} ({biggest})")
 
-		do_run(dataset, cfg["datasets"][dataset], model, checkpoints_dir, collect, epochs, output_root, device)
+		do_run(dataset, cfg["datasets"][dataset], model, checkpoints_dir, collect, epochs, output_root, device, random_prop=random_prop)
 
 		elapsed = time.time() - start_time
 		logger.info(f"Finished task: {task} in {elapsed:.2f} seconds")
