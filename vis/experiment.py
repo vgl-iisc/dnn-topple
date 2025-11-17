@@ -72,6 +72,9 @@ class LossLandscapeExperiment:
         paths = self.get_paths(data_dir, ct_dir)
 
         for key, path in paths.items():
+            if key == "tensors":
+                continue
+            
             if key == "ctree":
                 paths_should_exist = [f"{path}.{ext}" for ext in ["order.dat", "order.bin", "part.raw", "rg.bin", "rg.dat"]]
 
