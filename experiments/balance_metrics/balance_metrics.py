@@ -21,9 +21,16 @@ import scipy.stats as stats
 import matplotlib.pyplot as plt
 from matplotlib.category import UnitData
 
+from multiprocessing import Pool, cpu_count, log_to_stderr
+import logging
+
 METRICS = ["average_branching_factor", "colless_index", "sackin_index", "total_volume", "missing_colless_frac"]
 # THRESH_SELECTION = "valley=classes"
 THRESH_SELECTION = 0.0
+
+# Configure logging at module level for multiprocessing
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(processName)s - %(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
 
 def get_data(csv_path: str) -> pd.DataFrame:
 	data = pd.read_csv(csv_path)
@@ -498,37 +505,52 @@ def plot_exp_regressions(data: pd.DataFrame, out_dir: str, ignore_percentile: fl
 				out_path=os.path.join(metric_dirs[metric], f'exp_regression_{ds_name}_{model_name}_val_acc_vs_{metric}.png')
 			)
 
-def main(datasets_dir: str, data_dir: str, ct_dir: str, output_path: str) -> None:
-	datasets = exp.find_all_datasets(datasets_dir)
-	experiments = exp.find_all_experiments(datasets, data_dir, ct_dir)
+def process_experiment(worker_id: int, experiment, data_dir: str, ct_dir: str, thresh_selection) -> dict:
+	"""
+	Worker function to process a single experiment.
+	
+	Parameters:
+	- worker_id: int
+		Worker identifier for logging
+	- experiment: Experiment object
+		The experiment to process
+	- data_dir: str
+		Path to data directory
+	- ct_dir: str
+		Path to contour trees directory
+	- thresh_selection: float or str
+		Threshold selection mode
+	
+	Returns:
+	- result: dict
+		Dictionary containing computed metrics and accuracies
+	"""
+	log = logging.getLogger(__name__)
+	log.info(f"{worker_id}: Processing experiment: {experiment}")
 
-	results = []
-
-	for experiment in experiments:
-		print(f"Processing experiment: {experiment}")
-
+	try:
 		paths = experiment.get_paths(data_dir, ct_dir)
 		tree_path = paths["ctree"]
 
 		fns, num_min = get_valley_vs_thresh(tree_path)
   
-		if THRESH_SELECTION == "valley=classes":
+		if thresh_selection == "valley=classes":
 			wanted_num_valleys = len(experiment.dataset.classes)
-		elif THRESH_SELECTION == "valley=2classes":
+		elif thresh_selection == "valley=2classes":
 			wanted_num_valleys = 2 * len(experiment.dataset.classes)
-		elif type(THRESH_SELECTION) is float:
+		elif type(thresh_selection) is float:
 			wanted_num_valleys = None
-			thresh = THRESH_SELECTION
+			thresh = thresh_selection
 		else:
-			raise ValueError(f"Unknown THRESH_SELECTION: {THRESH_SELECTION}")
+			raise ValueError(f"Unknown thresh_selection: {thresh_selection}")
 
 		if wanted_num_valleys is not None:
 			if not wanted_num_valleys in num_min:
 				wanted_num_valleys = max(num_min)
-				print(f"Desired number of valleys {wanted_num_valleys} not found. Using maximum available: {wanted_num_valleys}")
+				log.info(f"{worker_id}: Desired number of valleys {wanted_num_valleys} not found. Using maximum available: {wanted_num_valleys}")
 			thresh = fns[num_min.index(wanted_num_valleys)]
+		
 		tree = vu.rooted_tree_from_exp(experiment, thresh, data_dir, ct_dir)
-
 		metrics = tm.compute_tree_imbalance_metrics(tree)
 
 		accuracy = process_file(paths["compiled_res"], experiment.epoch)
@@ -541,20 +563,62 @@ def main(datasets_dir: str, data_dir: str, ct_dir: str, output_path: str) -> Non
 			"epoch": experiment.epoch,
 			"layer": experiment.layer,
 			"thresh": thresh,
-			"thresh_mode": str(THRESH_SELECTION),
+			"thresh_mode": str(thresh_selection),
 			**metrics
 		}
   
-
 		result["train_acc"] = accuracy.loc[accuracy['Split'] == 'Train', 'accuracy'].values[0] if 'Train' in accuracy['Split'].values else np.nan
 		result["val_acc"] = accuracy.loc[accuracy['Split'] == 'Val', 'accuracy'].values[0] if 'Val' in accuracy['Split'].values else np.nan
-		print(f"result: {result}\n\n")
+		
+		log.info(f"{worker_id}: Completed experiment: {experiment}")
+		return result
+	
+	except Exception as e:
+		log.error(f"{worker_id}: Error processing experiment {experiment}: {e}")
+		raise
 
-		results.append(result)
-
+def main(datasets_dir: str, data_dir: str, ct_dir: str, output_path: str) -> None:
+	log_to_stderr(logging.INFO)
+	logger.info("Starting balance metrics computation")
+	
+	datasets = exp.find_all_datasets(datasets_dir)
+	experiments = exp.find_all_experiments(datasets, data_dir, ct_dir)
+	
+	experiments_list = list(experiments)
+	logger.info(f"Found {len(experiments_list)} experiments to process")
+	
+	if len(experiments_list) == 0:
+		logger.info("No experiments found to process")
+		return
+	
+	# Distribute experiments across workers
+	N_workers = max(1, cpu_count() - 4)
+	
+	# Create task groups where each task is (worker_id, experiment, data_dir, ct_dir, thresh_selection)
+	task_args = []
+	for i in range(N_workers):
+		worker_experiments = experiments_list[i::N_workers]
+		for experiment in worker_experiments:
+			task_args.append((i, experiment, data_dir, ct_dir, THRESH_SELECTION))
+	
+	logger.info(f"Starting processing: {len(task_args)} total experiments across {N_workers} workers")
+	
+	# Create pool and process experiments
+	with Pool(N_workers) as processes:
+		results = processes.starmap(process_experiment, task_args)
+	
+	logger.info("All experiments processed, collecting results")
+	
+	# Filter out None results (from errors) and create DataFrame
+	results = [r for r in results if r is not None]
+	
+	if len(results) == 0:
+		logger.error("No valid results obtained from processing")
+		return
+	
 	results_df = pd.DataFrame(results)
 	results_df.to_csv(output_path, index=False)
-	print(f"Results saved to {output_path}")
+	logger.info(f"Results saved to {output_path}")
 
 if __name__ == "__main__":
 	import argparse

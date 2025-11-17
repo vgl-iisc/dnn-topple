@@ -13,6 +13,8 @@ import pyct as ct
 from sys import argv
 import os
 
+from multiprocessing import get_logger
+
 from utils import get_adjlist_from_graph
 
 def compute_contour_tree(G: nx.Graph, scalar_function: np.ndarray, tree_type: ct.TreeType = ct.TreeType.TypeContourTree) -> ct.MergeTree:
@@ -45,13 +47,19 @@ tree_type_name = {
     ct.TreeType.TypeJoinTree: "join_tree"
 }
 
-def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output_directory: str, tree_type: ct.TreeType = ct.TreeType.TypeContourTree):
+def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output_directory: str, tree_type: ct.TreeType = ct.TreeType.TypeContourTree, worker_id: int = 0):
+    """
+    Compute and save contour tree for a single graph-scalar pair.
+    
+    This function writes directly to disk since ct.ContourTree objects are not serializable.
+    """
+    log = get_logger()
 
     os.makedirs(output_directory, exist_ok=True)
 
     # Load the graph
     G = nx.read_adjlist(adjlist_file, nodetype=int)
-    print(f"Loaded graph with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
+    log.info(f"{worker_id}: Loaded graph with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges from {adjlist_file}")
 
     filename = os.path.basename(adjlist_file)
     name, _ = os.path.splitext(filename)
@@ -59,22 +67,21 @@ def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output
 
     # Load the scalar function
     scalar_function = np.loadtxt(scalar_fn_file)
-    print(f"Loaded scalar function with {len(scalar_function)} values.")
+    log.info(f"{worker_id}: Loaded scalar function with {len(scalar_function)} values from {scalar_fn_file}")
 
     if len(scalar_function) != G.number_of_nodes():
-        print(f"Error: Scalar function length {len(scalar_function)} does not match number of nodes {G.number_of_nodes()}. Skipping.")
+        log.error(f"{worker_id}: Scalar function length {len(scalar_function)} does not match number of nodes {G.number_of_nodes()}. Skipping.")
         return
 
     # Compute the contour tree
     contour_tree = compute_contour_tree(G, scalar_function, tree_type)
-    print(f"Computed {tree_type_name[tree_type]}.")
+    log.info(f"{worker_id}: Computed {tree_type_name[tree_type]}")
 
     outfile = os.path.join(output_directory, f"{name}")
-    # TODO: make this an option
     contour_tree.output(outfile, tree_type)
     
-    print(f"Saved {tree_type_name[tree_type]} to {output_directory}.")
-    print(f"Computing hierarchical simplification.")
+    log.info(f"{worker_id}: Saved {tree_type_name[tree_type]} to {output_directory}")
+    log.info(f"{worker_id}: Computing hierarchical simplification")
 
     ctdata = ct.ContourTreeData()
     
@@ -88,10 +95,33 @@ def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output
 
         sim.simplify(sim_fn)
         sim.outputOrder(outfile, False)
+        log.info(f"{worker_id}: Saved simplification order to {output_directory}")
     except Exception as e:
-        print(f"Error during simplification: {e}")
+        log.error(f"{worker_id}: Error during simplification: {e}")
 
-    print(f"Saved simplification order to {output_directory}.")
+def process_contour_trees(worker_id: int, tasks: list, tree_type: ct.TreeType):
+    """
+    Worker function to process a batch of contour tree computations.
+    
+    Parameters:
+    - worker_id: int
+        Worker identifier for logging
+    - tasks: list of tuples (adjlist_file, scalar_fn_file, output_directory)
+        List of tasks to process
+    - tree_type: ct.TreeType
+        The type of tree to compute
+    """
+    log = get_logger()
+    log.info(f"{worker_id}: Starting processing of {len(tasks)} tasks")
+    
+    for adjlist_file, scalar_fn_file, output_directory in tasks:
+        try:
+            compute_and_save_contour_tree(adjlist_file, scalar_fn_file, output_directory, tree_type, worker_id)
+        except Exception as e:
+            log.error(f"{worker_id}: Error processing {adjlist_file} with {scalar_fn_file}: {e}")
+    
+    log.info(f"{worker_id}: Completed all tasks")
+
 
 def main():
     if len(argv) != 5:
@@ -114,7 +144,7 @@ def main():
     }
     tree_type = tree_type[ct_type]
 
-    compute_and_save_contour_tree(adjlist_file, scalar_fn_file, output_directory, tree_type)  
+    compute_and_save_contour_tree(adjlist_file, scalar_fn_file, output_directory, tree_type, worker_id=0)  
 
 
 if __name__ == "__main__":

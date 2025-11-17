@@ -14,12 +14,18 @@ from glob import glob
 from sys import argv
 import os
 
-from contour_tree import compute_and_save_contour_tree
+from multiprocessing import Pool, cpu_count, log_to_stderr
+import logging
+
+from contour_tree import process_contour_trees
 
 def main():
     if len(argv) != 5:
         print("Usage: python compute_contour_trees.py <data_dir> <complexes_dir> <ct_dir> <type: c | s | j (contour, split, or join)>")
         return
+    
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(processName)s - %(levelname)s: %(message)s')
+    log_to_stderr(logging.INFO)
     
     data_dir = argv[1].strip("\\/")
     complexes_dir = argv[2].strip("\\/")
@@ -38,6 +44,9 @@ def main():
     
     tree_type = tree_type[ct_type]
 
+    # Collect all tasks first
+    all_tasks = []
+    
     for (root, dirs, files) in os.walk(data_dir):
         if not "Losses" in root:
             continue
@@ -61,11 +70,31 @@ def main():
             for g in complexes:
                 scalar_file = os.path.join(root, f)
                 complex_file = os.path.join(complex_root, g)
-
-                print(f"Processing {scalar_file} with {complex_file}")
-                compute_and_save_contour_tree(complex_file, scalar_file, output_root, tree_type)
-                print()
-
+                all_tasks.append((complex_file, scalar_file, output_root))
+    
+    if len(all_tasks) == 0:
+        logging.info("No tasks found to process")
+        return
+    
+    # Distribute tasks across workers
+    N_workers = max(1, cpu_count() - 4)
+    task_groups = []
+    
+    for i in range(N_workers):
+        worker_tasks = all_tasks[i::N_workers]
+        if len(worker_tasks) > 0:
+            task_groups.append((i, worker_tasks, tree_type))
+    
+    logging.info(f"Starting processing: {len(all_tasks)} total tasks across {len(task_groups)} workers")
+    logging.info(f"Tasks per worker: {[len(group[1]) for group in task_groups]}")
+    
+    # Create pool and process tasks
+    processes = Pool(len(task_groups))
+    processes.starmap(process_contour_trees, task_groups)
+    processes.close()
+    processes.join()
+    
+    logging.info("All contour tree computations completed")
     print("Done")
 
 
