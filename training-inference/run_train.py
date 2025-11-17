@@ -134,7 +134,7 @@ def save_checkpoint(state, ckpt_dir, epoch):
 	torch.save(state, path)
 	return path
 
-def do_run(cfg, device, tboard_base, checkpoints_base):
+def do_run(cfg, device, tboard_base, checkpoints_base, only_last_best=False):
 	train_loader, test_loader = get_dataloaders(cfg)
 	num_classes = train_loader.dataset.num_classes
  
@@ -189,7 +189,14 @@ def do_run(cfg, device, tboard_base, checkpoints_base):
 			'optimizer_state_dict': optimizer.state_dict(),
 			'cfg': cfg,
 		}
-		save_checkpoint(state, ckpt_dir, epoch)
+  
+		if only_last_best:
+			if epoch == epochs:
+				save_checkpoint(state, ckpt_dir, epoch)
+		else:
+			save_checkpoint(state, ckpt_dir, epoch)
+
+
 		if val_acc > best_val_acc:
 			best_val_acc = val_acc
 			if best_epoch > 0:
@@ -257,6 +264,8 @@ def main(argv=None):
 	todo = global_cfg["do"]
 	global_cfg = global_cfg["config"]
 
+	only_last_best = global_cfg.get("only_last_best", False)
+
 	# allow CLI overrides
 	if args.tensorboard_dir:
 		global_cfg['tensorboard_dir'] = args.tensorboard_dir
@@ -284,7 +293,7 @@ def main(argv=None):
 		os.makedirs(ckpt_dir, exist_ok=False)
 
 		logger.info(f'\n=== Starting run: {name} ===')
-		do_run(cfg, device, tb_dir, ckpt_dir)
+		do_run(cfg, device, tb_dir, ckpt_dir, only_last_best=only_last_best)
 		logger.info(f'=== Finished run: {name} ===\n')
 
 
