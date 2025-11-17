@@ -13,11 +13,78 @@ import numpy as np
 
 import networkx as nx
 
+from multiprocessing import Pool, cpu_count, log_to_stderr, get_logger
+
+import logging
+
+def save_name_txt(file, k, connected):
+    return f"adj_{file[len("vectors_"):-4]}_{k}" + ("_connected" if connected else "")
+
+def save_name_pt(file, k, connected):
+    return f"adj_{os.path.splitext(file)[0]}_{k}" + ("_connected" if connected else "")
+
+def process_files(id, data_dir, complexes_dir, root, files, max_k, exact):
+        log = get_logger()
+
+        for tensor_file in files:
+            tensor_path = os.path.join(root, tensor_file)
+            
+            save_name_fn = save_name_txt
+            if tensor_path.endswith('.pt'):
+                data = torch.load(tensor_path).numpy()
+                save_name_fn = save_name_pt
+            else:
+                data = np.loadtxt(tensor_path)
+
+            log.info(f"{id}: Loaded data from {tensor_path} with shape {data.shape}")
+
+            if not complexes_dir.endswith("/") and data_dir.endswith("/"):
+                complexes_dir += '/"'
+
+            save_basepath = root.replace(data_dir, complexes_dir).replace(f"Tensors{os.sep}", f"")
+            os.makedirs(save_basepath, exist_ok=True)
+
+            Gmax = compute_knn_graph(data, n_neighbors=max_k)
+            
+            if not nx.is_connected(Gmax):
+                log.info(f"{id}: Warning: max_k={max_k} does not yield a connected graph for {tensor_path}, skipping")
+                continue
+
+            if exact:
+                name = save_name_fn(tensor_file, max_k, True)
+                nx.write_adjlist(Gmax, os.path.join(save_basepath, f"{name}.txt"))
+                log.info(f"{id}: Done with {tensor_path}, exact k={max_k} -> {name}")
+                continue
+
+            l = 1
+            r = max_k
+
+            while l < r:
+                mid = l + (r - l) // 2
+                G = compute_knn_graph(data, n_neighbors=mid)
+
+                name = save_name_fn(tensor_file, mid, False)
+
+                if nx.is_connected(G):
+                    r = mid
+                    name += "_connected"
+                else:
+                    l = mid + 1
+
+                nx.write_adjlist(G, os.path.join(save_basepath, f"{name}.txt"))
+
+            k = l
+            log.info(f"{id}: Done with {tensor_path}, min connected k={k}")
+
 def main():
     if len(argv) != 4 and len(argv) != 5:
         print("Usage: python compute_knn_complexes.py <data_dir> <complexes_dir> <max_k> [search_k]")
         return
     
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(processName)s - %(levelname)s: %(message)s')
+
+    log_to_stderr(logging.INFO)
+
     data_dir = argv[1]
     complexes_dir = argv[2]
     max_k = int(argv[3])
@@ -30,56 +97,27 @@ def main():
 
         tensor_files = [f for f in files if f.startswith("vectors_") and f.endswith(".txt")]
         tensor_files_2 = [f for f in files if f.endswith(".pt")]
-        
+
         if len(tensor_files_2) > 0:
             tensor_files = tensor_files_2
 
-        for tensor_file in tensor_files:
-            tensor_path = os.path.join(root, tensor_file)
-            
-            if tensor_path.endswith('.pt'):
-                data = torch.load(tensor_path).numpy()
-            else:
-                data = np.loadtxt(tensor_path)
-            
-            print(f"Loaded data from {tensor_path} with shape {data.shape}")
+        if len(tensor_files) == 0:
+            continue
 
-            # do this as a binary search for the smallest k that gives a connected graph
+        groups = []
 
-            l = 1
-            r = max_k
+        N_groups = cpu_count()
+        for i in range(N_groups):
+            groups.append((i, data_dir, complexes_dir, root, tensor_files[i::N_groups], max_k, exact))
 
-            save_basepath = root.replace(data_dir, complexes_dir).replace(f"Tensors{os.sep}", f"")
-            os.makedirs(save_basepath, exist_ok=True)
+        logging.info(f"Starting {root}: {len(tensor_files)} files, {len(groups)} groups: {list(map(lambda x: len(x[4]), groups))}")
 
-            Gmax = compute_knn_graph(data, n_neighbors=max_k)
-            
-            if not nx.is_connected(Gmax):
-                print(f"Warning: max_k={max_k} does not yield a connected graph for {tensor_path}, skipping")
-                continue
+        processes = Pool(N_groups)
+        processes.starmap(process_files, groups)
+        processes.close()
+        processes.join()
 
-            if exact:
-                name = f"adj_{tensor_file[len('vectors_'):-4]}_{max_k}_connected"
-                nx.write_adjlist(Gmax, os.path.join(save_basepath, f"{name}.txt"))
-                print(f"Done with {tensor_path}, exact k={max_k}")
-                continue
-
-            while l < r:
-                mid = l + (r - l) // 2
-                G = compute_knn_graph(data, n_neighbors=mid)
-
-                name = f"adj_{tensor_file[len("vectors_"):-4]}_{mid}"
-
-                if nx.is_connected(G):
-                    r = mid
-                    name += "_connected"
-                else:
-                    l = mid + 1
-
-                nx.write_adjlist(G, os.path.join(save_basepath, f"{name}.txt"))
-
-            k = l
-            print(f"Done with {tensor_path}, min connected k={k}")
+        logging.info(f"Done with {root}")
                 
 if __name__ == "__main__":
     main()
