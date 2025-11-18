@@ -112,10 +112,10 @@ def render_experiment(id: int, half_width: bool):
         
         data = pd.DataFrame({"Simplification Threshold": threshs, "Number of Minima": num_min}).sort_values(by="Number of Minima")
 
-        chart = alt.Chart(data).mark_line().encode(
+        chart = alt.Chart(data).mark_line(interpolate='step-after').encode(
             x="Simplification Threshold",
-            y="Number of Minima",
-            tooltip=["Simplification Threshold", "Number of Minima"]
+            y=alt.Y("Number of Minima", scale=alt.Scale(type="log")),
+            tooltip=["Simplification Threshold", "Number of Minima"],
         ).interactive()
         
         st.altair_chart(chart, use_container_width=True)
