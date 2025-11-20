@@ -5,7 +5,7 @@ Goes through all landscapes in the data directory and computes
 
 import torch
 from knn_graph import compute_knn_graph
-from rng_graph import compute_rng_graph
+# from rng_graph import compute_rng_graph
 
 import os
 
@@ -45,8 +45,9 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
             save_basepath = root.replace(data_dir, complexes_dir).replace(f"Tensors{os.sep}", f"")
             os.makedirs(save_basepath, exist_ok=True)
 
-            if method == 'r':
-                Gmax = compute_rng_graph(data)
+            # if method == 'r':
+            if False:
+                pass
             else:
                 Gmax = compute_knn_graph(data, n_neighbors=max_k)
             
@@ -111,7 +112,7 @@ def main():
 
         groups = []
 
-        N_groups = cpu_count()
+        N_groups = max(1, (cpu_count() // 2) - 1)
         for i in range(N_groups):
             groups.append((i, data_dir, complexes_dir, root, tensor_files[i::N_groups], max_k, True, method))
 
