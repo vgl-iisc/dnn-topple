@@ -228,7 +228,6 @@ def do_run(dataset, data_root, arch, checkpoints_dir, collection, epochs, output
 	for epoch in run_epochs:
 		logger.info(f"Processing epoch {epoch}...")
 
-
 		ckpt = os.path.join(checkpoints_dir, f"checkpoint_e{epoch}.pt")
 
 		if epoch == 0:

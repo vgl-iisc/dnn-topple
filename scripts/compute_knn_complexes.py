@@ -5,6 +5,7 @@ Goes through all landscapes in the data directory and computes
 
 import torch
 from knn_graph import compute_knn_graph
+from rng_graph import compute_rng_graph
 
 import os
 
@@ -23,7 +24,7 @@ def save_name_txt(file, k, connected):
 def save_name_pt(file, k, connected):
     return f"adj_{os.path.splitext(file)[0]}_{k}" + ("_connected" if connected else "")
 
-def process_files(id, data_dir, complexes_dir, root, files, max_k, exact):
+def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method):
         log = get_logger()
 
         for tensor_file in files:
@@ -44,7 +45,10 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact):
             save_basepath = root.replace(data_dir, complexes_dir).replace(f"Tensors{os.sep}", f"")
             os.makedirs(save_basepath, exist_ok=True)
 
-            Gmax = compute_knn_graph(data, n_neighbors=max_k)
+            if method == 'r':
+                Gmax = compute_rng_graph(data)
+            else:
+                Gmax = compute_knn_graph(data, n_neighbors=max_k)
             
             if not nx.is_connected(Gmax):
                 log.info(f"{id}: Warning: max_k={max_k} does not yield a connected graph for {tensor_path}, skipping")
@@ -77,8 +81,8 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact):
             log.info(f"{id}: Done with {tensor_path}, min connected k={k}")
 
 def main():
-    if len(argv) != 4 and len(argv) != 5:
-        print("Usage: python compute_knn_complexes.py <data_dir> <complexes_dir> <max_k> [search_k]")
+    if len(argv) != 5:
+        print("Usage: python compute_knn_complexes.py <data_dir> <complexes_dir> <max_k> <r|k> (rng vs knn)")
         return
     
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(processName)s - %(levelname)s: %(message)s')
@@ -88,8 +92,9 @@ def main():
     data_dir = argv[1]
     complexes_dir = argv[2]
     max_k = int(argv[3])
+    method = argv[4]
     
-    exact = len(argv) != 5
+    exact = True
 
     for root, dirs, files in os.walk(data_dir):
         if not "Tensors" in root:
@@ -108,7 +113,7 @@ def main():
 
         N_groups = cpu_count()
         for i in range(N_groups):
-            groups.append((i, data_dir, complexes_dir, root, tensor_files[i::N_groups], max_k, exact))
+            groups.append((i, data_dir, complexes_dir, root, tensor_files[i::N_groups], max_k, True, method))
 
         logging.info(f"Starting {root}: {len(tensor_files)} files, {len(groups)} groups: {list(map(lambda x: len(x[4]), groups))}")
 
