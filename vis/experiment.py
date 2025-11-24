@@ -1,5 +1,6 @@
 import os
 from glob import glob
+import sys
 
 class Dataset:
     def __init__(self, name: str, path: str, classes_path: str, splits: list[str]) -> None:
@@ -114,6 +115,11 @@ def find_all_datasets(datasets_dir: str) -> dict[str, Dataset]:
             dataset = Dataset(dataset_name, dataset_path, classes_path, splits)
             datasets[dataset_name] = dataset
 
+            for r in ["0.0", "0.05", "0.1", "0.15", "0.2", "0.25", "0.3", "0.35", "0.4", "0.45", "0.5", "0.55", "0.6", "0.65", "0.7", "0.75", "0.8", "0.85", "0.9", "0.95", "1.0"]:
+                random_name = f"{dataset_name}-r{r}"
+                ds = Dataset(random_name, dataset_path, classes_path, splits)
+                datasets[random_name] = ds  # Alias for random splits
+
     return datasets
 
 def find_all_experiments(datasets: dict[str, Dataset], data_dir: str, ct_dir: str) -> list[LossLandscapeExperiment]:
@@ -134,6 +140,7 @@ def find_all_experiments(datasets: dict[str, Dataset], data_dir: str, ct_dir: st
 
         model_data, split = parts
         model, dataset_name = model_data.split("_")
+        print(f"Model: {model}, Dataset: {dataset_name}, Split: {split}")
 
         if dataset_name not in datasets:
             print(f"Warning: Dataset {dataset_name} not found for model {model}")
