@@ -97,9 +97,9 @@ runs:
     dataset: mnist
 
 do:
-  - densenet_mnist
-  - resnet_mnist
-  - vgg_mnist
+  - densenet_cifar
+  - resnet_cifar
+  - vgg_cifar
 
 checkpoints_dir: /media/solis/DATA/Santripta/Training_random/checkpoints/
 save_dir: /media/santripta/data2/Inference_better/landscape_data_random_cifar/
