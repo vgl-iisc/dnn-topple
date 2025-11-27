@@ -26,3 +26,5 @@ saved_states/state_*.pkl
 
 # run bash scripts
 run_*.sh
+
+*.ini
