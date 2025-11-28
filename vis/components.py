@@ -177,7 +177,8 @@ def render_tree_explorer(id: int):
 
         st.text(f"{len(valid_features)} features selected. Rendering {len(gnx.edges)} features after processing. Connected: {nx.is_connected(gnx.to_undirected())}")
 
-        imbalance_metrics = compute_tree_imbalance_metrics(gnx)
+        # imbalance_metrics = compute_tree_imbalance_metrics(gnx)
+        imbalance_metrics = "hi"
         
         g = net.Network(height="600px", width="100%", directed=True)
         g.from_nx(gnx)

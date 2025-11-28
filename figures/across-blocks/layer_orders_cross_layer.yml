@@ -1,0 +1,65 @@
+densenet:
+  a8:
+    idx: 0
+    name: denseblock1
+  a7:
+    idx: 1
+    name: transition1
+  a6:
+    idx: 2
+    name: denseblock2
+  a5:
+    idx: 3
+    name: transition2
+  a4:
+    idx: 4
+    name: denseblock3
+  a3:
+    idx: 5
+    name: transition3
+  a2:
+    idx: 6
+    name: denseblock4
+  a1:
+    idx: 7
+    name: classifier
+
+vgg:
+  a7:
+    idx: 0
+    name: conv1
+  a6:
+    idx: 1
+    name: conv2
+  a5:
+    idx: 2
+    name: conv3
+  a4:
+    idx: 3
+    name: conv4
+  a3:
+    idx: 4
+    name: conv5
+  a2:
+    idx: 5
+    name: fc1
+  a1:
+    idx: 6
+    name: classifier
+
+resnet:
+  a5:
+    idx: 0
+    name: layer1
+  a4:
+    idx: 1
+    name: layer2
+  a3:
+    idx: 2
+    name: layer3
+  a2:
+    idx: 3
+    name: layer4
+  a1:
+    idx: 4
+    name: classifier
