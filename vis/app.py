@@ -110,7 +110,7 @@ def render_experiment(id: int, half_width: bool):
     with st.expander("Steady State Finder", expanded=False):
         threshs, num_min = valley_vs_thresh_data(exp, 0.0)
         
-        data = pd.DataFrame({"Simplification Threshold": threshs, "Number of Minima": num_min}).sort_values(by="Number of Minima")
+        data = pd.DataFrame({"Simplification Threshold": threshs, "Number of Minima": num_min}).sort_values(by="Number of Minima", ascending=False)
 
         chart = alt.Chart(data).mark_line(interpolate='step-after').encode(
             x="Simplification Threshold",
