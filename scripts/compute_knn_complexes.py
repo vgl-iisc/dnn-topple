@@ -15,7 +15,9 @@ import numpy as np
 import networkx as nx
 
 from multiprocessing import Pool, cpu_count, log_to_stderr, get_logger
+from timeit import default_timer as timer
 
+import pickle
 import logging
 
 def save_name_txt(file, k, connected):
@@ -25,6 +27,7 @@ def save_name_pt(file, k, connected):
     return f"adj_{os.path.splitext(file)[0]}_{k}" + ("_connected" if connected else "")
 
 def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method):
+        times = {}
         log = get_logger()
 
         for tensor_file in files:
@@ -38,6 +41,9 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
                 data = np.loadtxt(tensor_path)
 
             log.info(f"{id}: Loaded data from {tensor_path} with shape {data.shape}")
+            
+            if data.shape not in times:
+                times[data.shape] = []
 
             if not complexes_dir.endswith("/") and data_dir.endswith("/"):
                 complexes_dir += '/"'
@@ -49,7 +55,10 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
             if False:
                 pass
             else:
+                start = timer()
                 Gmax = compute_knn_graph(data, n_neighbors=max_k)
+                end = timer()
+                times[data.shape].append(end - start)
             
             if not nx.is_connected(Gmax):
                 log.info(f"{id}: Warning: max_k={max_k} does not yield a connected graph for {tensor_path}, skipping")
@@ -80,6 +89,8 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
 
             k = l
             log.info(f"{id}: Done with {tensor_path}, min connected k={k}")
+        
+        return times
 
 def main():
     if len(argv) != 5:
@@ -96,6 +107,7 @@ def main():
     method = argv[4]
     
     exact = True
+    times_dict = {}
 
     for root, dirs, files in os.walk(data_dir):
         if not "Tensors" in root:
@@ -119,11 +131,20 @@ def main():
         logging.info(f"Starting {root}: {len(tensor_files)} files, {len(groups)} groups: {list(map(lambda x: len(x[4]), groups))}")
 
         processes = Pool(N_groups)
-        processes.starmap(process_files, groups)
+        all_times = processes.starmap(process_files, groups)
         processes.close()
         processes.join()
 
+        for times in all_times:
+            for k, v in times.items():
+                if k not in times_dict:
+                    times_dict[k] = []
+                times_dict[k].extend(v)
+        
         logging.info(f"Done with {root}")
+    
+    with open("knn_times.pkl", "wb") as f:
+        pickle.dump(times_dict, f)
                 
 if __name__ == "__main__":
     main()
