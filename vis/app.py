@@ -83,7 +83,7 @@ def float_input(key: str, label: str, default: float, min_value = None, max_valu
     return fval
 
 # TODO: we'd really like to fragment, but there's a really strange bug that makes the app unusable, so for now we just use a normal function
-@st.fragment
+# @st.fragment
 def render_experiment(id: int, half_width: bool):
 
     def remove_experiment():
@@ -186,7 +186,7 @@ def main():
         print(f"Found {len(datasets)} datasets and {len(experiments)} experiments")
         print("\n".join([repr(exp) for exp in experiments]))
 
-    st.title("Topological Loss Landscape Explorer")
+    st.title("TOPPLE: Topology-powered Latent-space Exploration")
     st.divider()
 
     # render_save()
@@ -204,19 +204,19 @@ def main():
         st.session_state.exp_ids.append(st.session_state.last_exp_id)
     
     with col1:
-        st.button("Add Experiment", on_click=add_exp, key="add_experiment_button")
+        st.button("Add Function", on_click=add_exp, key="add_experiment_button")
     
     with col2:
         st.session_state.comparison_mode = st.checkbox("Comparison Mode", value=True, help="Render groups of experiments side-by-side for easier comparison.", key="comparison_mode_checkbox")
 
     if len(st.session_state.exp_ids) == 0:
-        st.info("Add experiments to begin exploring the corresponding loss landscapes.")
+        st.info("Add functions to begin exploring the corresponding latent spaces.")
         return
     
     def id2title(id: int) -> str:
         exp = st.session_state.get(f"selected_experiment_{id}", None)
         
-        return repr(exp) if exp is not None else f"Unselected Experiment"
+        return repr(exp) if exp is not None else f"Unselected Function"
     
     if st.session_state.comparison_mode:
         for i in range(0, len(st.session_state.exp_ids), 2):
