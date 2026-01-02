@@ -23,6 +23,7 @@ import torchvision.models as tv_models
 # Canonical torchvision constructors are provided; create_model accepts several
 # legacy aliases for backwards compatibility.
 
+AVAILABLE_MODELS = ['densenet121', 'resnet18', 'vgg16', 'wide_resnet50_2']
 
 def resnet18(num_classes: int = 10) -> nn.Module:
     """Return torchvision's resnet18"""
@@ -31,6 +32,12 @@ def resnet18(num_classes: int = 10) -> nn.Module:
     model.fc = nn.Linear(in_features, num_classes)
     return model
 
+def resnet50(num_classes: int = 10) -> nn.Module:
+    """Return torchvision's resnet50"""
+    model = tv_models.resnet50()
+    in_features = model.fc.in_features
+    model.fc = nn.Linear(in_features, num_classes)
+    return model
 
 def wide_resnet50_2(num_classes: int = 10) -> nn.Module:
     """Return torchvision's wide_resnet50_2"""
@@ -122,11 +129,16 @@ def create_model(
 ) -> nn.Module:
     """Create a model and CIFAR transforms.
 
-    arch: one of 'densenet121', 'resnet18', 'vgg16', 'wide_resnet50_2'
+    arch: one of AVAILABLE_MODELS
+    num_classes: number of output classes
     Returns: (model_on_device, (train_transform, test_transform))
     """
     dev = torch.device(device)
     arch = arch.lower()
+    
+    if arch not in AVAILABLE_MODELS:
+        raise ValueError(f'Unsupported architecture: {arch}. Available models: {AVAILABLE_MODELS}')
+    
     # Accept only canonical torchvision names (no aliases)
     if arch == 'densenet121':
         model = densenet121(num_classes=num_classes)
@@ -147,7 +159,7 @@ def create_model(
 
 if __name__ == '__main__':
     print('Creating example models:')
-    for name in ('resnet18', 'densenet121', 'vgg16', 'wide_resnet50_2'):
+    for name in AVAILABLE_MODELS:
         try:
             model = create_model(name, num_classes=10)
             print(f'  - {name}: OK')
