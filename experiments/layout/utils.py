@@ -57,6 +57,15 @@ def compute_arc_features(ctree_path, simpl: float):
 
 	return features, data
 
+def make_arc_map(features: list[RichFeature]):
+    arc_map = {}
+    for feat in features:
+        for arc_id in feat.arcs:
+            assert arc_id not in arc_map, "Arc belongs to multiple features!"
+            arc_map[arc_id] = feat
+    
+    return arc_map
+
 def get_adjlist_from_graph(G: nx.Graph):
 	"""
 	Converts a NetworkX graph to an adjacency list format suitable for GraphScalarFunction.
