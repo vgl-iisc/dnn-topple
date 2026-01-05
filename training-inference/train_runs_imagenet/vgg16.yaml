@@ -1,0 +1,12 @@
+runs:
+  vgg_imagenet:
+    seed: 1759764288
+    dataset: imagenet
+    lr: 0.01
+
+model: vgg16
+batch_size: 64
+epochs: 200
+lr: 0.001
+momentum: 0.9
+weight_decay: 0.0005

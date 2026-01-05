@@ -19,6 +19,7 @@ import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
+import imagenet_loader
 import cifar10_loader
 import mnist_loader
 import model_loader
@@ -60,6 +61,11 @@ def get_dataloaders(cfg):
 		train_tf, _ = mnist_loader.get_mnist_transforms()
 		train_loader, test_loader = mnist_loader.make_mnist_dataloaders(
 			cfg['data_root'], batch_size=batch_size, transform=train_tf, shuffle=True, random_label_prop=random_prop
+		)
+	elif ds == "imagenet":
+		train_tf, test_tf = imagenet_loader.get_imagenet_transforms()
+		train_loader, test_loader = imagenet_loader.make_imagenet_dataloaders(
+			cfg['data_root'], batch_size=batch_size, train_transform=train_tf, test_transform=test_tf, shuffle=True, random_label_prop=random_prop
 		)
 	else:
 		raise ValueError(f'Unsupported dataset: {ds}')

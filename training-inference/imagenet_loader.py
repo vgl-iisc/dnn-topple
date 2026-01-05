@@ -184,5 +184,7 @@ if __name__ == '__main__':
     output_dir = sys.argv[2]
 
     train_transform, test_transform = get_imagenet_transforms()
+
+    print("Creating ImageNet DataLoaders...")
     train_loader, test_loader = make_imagenet_dataloaders(data_root, batch_size=1, train_transform=train_transform, test_transform=test_transform)
     output_split_csv(train_loader, test_loader, output_dir=output_dir)
