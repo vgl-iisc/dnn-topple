@@ -35,25 +35,29 @@ def compute_prevs(feats: list[RichFeature]):
    
 	return prevs_edges
  
-def make_icicle_inner(feats: list[RichFeature]):
+def make_icicle_inner(feats: list[RichFeature], use_colors: str = "vol"):
 	labels = [f"{f.id}" for f in feats]
 	parents = [str(prev) if prev != -1 else "" for prev in compute_prevs(feats)]
 	values = [f.size for f in feats]
-	colors = [np.log(v) for v in values]
-	average_vol = np.mean(colors)
+ 
+	if use_colors == "vol":
+		colors = [np.log(v) for v in values]
+		average_col = np.mean(colors)
+		marker = dict(colors=colors, colorscale='RdBu_r', cmid=average_col)
+	elif use_colors == "loss":
+		colors = [np.log((f.fn_frm + f.fn_to) / 2) for f in feats]
+		average_col = np.mean(colors)
+		marker = dict(colors=colors, colorscale='RdBu_r', cmid=average_col)
+	else:
+		marker = None
  
 	fig = go.Figure(go.Icicle(
 		labels=labels,
 		parents=parents,
 		values=values,
 		root_color="lightgrey",
-  		tiling = dict(
-            orientation='v'
-        ),
-	    marker=dict(
-    	    colors=colors,
-        	colorscale='RdBu_r',
-        	cmid=average_vol)
+  		tiling = dict(orientation='v'),
+		marker=marker
 	))
  
 	fig.update_layout(margin = dict(t=50, l=25, r=25, b=25))
