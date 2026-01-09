@@ -22,7 +22,10 @@ from torch.utils.tensorboard import SummaryWriter
 import imagenet_loader
 import cifar10_loader
 import mnist_loader
+import emnist_loader
 import model_loader
+
+import run_inference
 
 from logging import Logger, FileHandler, Formatter, StreamHandler
 
@@ -62,6 +65,21 @@ def get_dataloaders(cfg):
 		train_loader, test_loader = mnist_loader.make_mnist_dataloaders(
 			cfg['data_root'], batch_size=batch_size, transform=train_tf, shuffle=True, random_label_prop=random_prop
 		)
+	elif ds == 'emnist':
+		train_tf, _ = emnist_loader.get_emnist_transforms()
+		train_loader, test_loader = emnist_loader.make_emnist_dataloaders(
+			cfg['data_root'], variant='byclass', batch_size=batch_size, transform=train_tf, shuffle=True, random_label_prop=random_prop
+		)
+	elif ds == 'emnist_balanced':
+		train_tf, _ = emnist_loader.get_emnist_transforms()
+		train_loader, test_loader = emnist_loader.make_emnist_dataloaders(
+			cfg['data_root'], variant='balanced', batch_size=batch_size, transform=train_tf, shuffle=True, random_label_prop=random_prop
+		)
+	elif ds == 'emnist_letters':
+		train_tf, _ = emnist_loader.get_emnist_transforms()
+		train_loader, test_loader = emnist_loader.make_emnist_dataloaders(
+			cfg['data_root'], variant='letters', batch_size=batch_size, transform=train_tf, shuffle=True, random_label_prop=random_prop
+		)
 	elif ds == "imagenet":
 		train_tf, test_tf = imagenet_loader.get_imagenet_transforms()
 		train_loader, test_loader = imagenet_loader.make_imagenet_dataloaders(
@@ -85,13 +103,27 @@ def make_optimizer(model, cfg):
 
 	return torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=decay)
 
-def train_epoch(model, loader, criterion, optimizer, device, epoch, writer=None):
+def train_epoch(model, loader, criterion, optimizer, device, epoch, writer=None, collect_outputs=False):
 	model.train()
 	running_loss = 0.0
 	correct = 0
 	total = 0
+	
+	# Optional collection for inference
+	collected_losses = [] if collect_outputs else None
+	collected_labels = [] if collect_outputs else None
+	collected_preds = [] if collect_outputs else None
+	collected_indices = [] if collect_outputs else None
+	
 	for step, batch in tqdm(enumerate(loader), total=len(loader), desc=f'Epoch {epoch}'):
-		images, labels = extract_batch(batch)
+		if isinstance(batch, dict):
+			images = batch['image']
+			labels = batch['label']
+			idxs = batch.get('index', None)
+		else:
+			images, labels = batch
+			idxs = None
+		
 		images = images.to(device)
 		labels = labels.to(device)
 
@@ -109,20 +141,49 @@ def train_epoch(model, loader, criterion, optimizer, device, epoch, writer=None)
 
 		if writer is not None and step % 100 == 0:
 			writer.add_scalar('train/batch_loss', loss.item(), epoch * len(loader) + step)
+		
+		if collect_outputs:
+			collected_losses.append(loss.detach())
+			collected_labels.append(labels.detach())
+			collected_preds.append(preds.detach())
+			if idxs is not None:
+				collected_indices.append(idxs.to(dtype=torch.uint64))
 
 	epoch_loss = running_loss / total
 	epoch_acc = correct / total
+	
+	if collect_outputs:
+		return epoch_loss, epoch_acc, {
+			'losses': collected_losses,
+			'labels': collected_labels,
+			'predicted': collected_preds,
+			'indices': collected_indices if collected_indices else None
+		}
 	return epoch_loss, epoch_acc
 
 
-def validate(model, loader, criterion, device):
+def validate(model, loader, criterion, device, collect_outputs=False):
 	model.eval()
 	running_loss = 0.0
 	correct = 0
 	total = 0
+	
+	# Optional collection for inference
+	collected_losses = [] if collect_outputs else None
+	collected_labels = [] if collect_outputs else None
+	collected_preds = [] if collect_outputs else None
+	collected_indices = [] if collect_outputs else None
+	
 	with torch.no_grad():
 		for batch in tqdm(loader, total=len(loader), desc='Validation'):
-			images, labels = extract_batch(batch)
+			if isinstance(batch, dict):
+				images = batch['image']
+				labels = batch['label']
+				idxs = batch.get('index', None)
+			else:
+				images, labels = batch
+				idxs = None
+			
 			images = images.to(device)
 			labels = labels.to(device)
 			outputs = model(images)
@@ -131,6 +192,21 @@ def validate(model, loader, criterion, device):
 			_, preds = torch.max(outputs, 1)
 			correct += (preds == labels).sum().item()
 			total += labels.size(0)
+			
+			if collect_outputs:
+				collected_losses.append(loss.detach())
+				collected_labels.append(labels.detach())
+				collected_preds.append(preds.detach())
+				if idxs is not None:
+					collected_indices.append(idxs.to(dtype=torch.uint64))
+	
+	if collect_outputs:
+		return running_loss / total, correct / total, {
+			'losses': collected_losses,
+			'labels': collected_labels,
+			'predicted': collected_preds,
+			'indices': collected_indices if collected_indices else None
+		}
 	return running_loss / total, correct / total
 
 
@@ -140,7 +216,48 @@ def save_checkpoint(state, ckpt_dir, epoch):
 	torch.save(state, path)
 	return path
 
-def do_run(cfg, device, tboard_base, checkpoints_base, only_last_best=False):
+def save_inference_outputs(epoch, train_outputs, val_outputs, train_activations, val_activations, output_root):
+	"""Save inference outputs collected during training/validation."""
+	logger.info(f'Saving inference outputs for epoch {epoch}...')
+	
+	# Create output directory for this epoch
+	epoch_output_dir = os.path.join(output_root, f'epoch_{epoch}')
+	os.makedirs(epoch_output_dir, exist_ok=True)
+	
+	import numpy as np
+	
+	# Write outputs
+	def write_output(split, output, collected_activations):
+		loss_dir = os.path.join(epoch_output_dir, "Losses", split)
+		preds_dir = os.path.join(epoch_output_dir, "Predictions", split)
+		tens_dir = os.path.join(epoch_output_dir, "Tensors", split)
+		
+		os.makedirs(loss_dir, exist_ok=True)
+		os.makedirs(preds_dir, exist_ok=True)
+		os.makedirs(tens_dir, exist_ok=True)
+		
+		collected_losses = torch.cat(output['losses']).detach().cpu().numpy().reshape(-1, 1).squeeze()
+		collected_preds = torch.cat(output['predicted']).detach().cpu().numpy().reshape(-1, 1).squeeze()
+		
+		for tag, activations in collected_activations.items():
+			stacked = torch.cat(activations).detach().cpu()
+			collated = stacked.reshape(len(stacked), -1)
+			torch.save(collated, os.path.join(tens_dir, f"a{tag}_e{epoch}.pt"))
+		
+		np.savetxt(os.path.join(loss_dir, f"losses_e{epoch}.txt"), collected_losses)
+		np.savetxt(os.path.join(preds_dir, f"predictions_e{epoch}.txt"), collected_preds, fmt='%d')
+	
+	write_output("train", train_outputs, train_activations)
+	write_output("val", val_outputs, val_activations)
+	
+	# Combine train+val
+	combined_outputs = {key: train_outputs[key] + val_outputs[key] for key in train_outputs}
+	combined_activations = {tag: train_activations[tag] + val_activations[tag] for tag in train_activations}
+	write_output("trainUval", combined_outputs, combined_activations)
+	
+	logger.info(f'Inference outputs saved for epoch {epoch}')
+
+def do_run(cfg, device, tboard_base, checkpoints_base, only_last_best=False, inference_cfg=None):
 	train_loader, test_loader = get_dataloaders(cfg)
 	num_classes = train_loader.dataset.num_classes
  
@@ -148,7 +265,8 @@ def do_run(cfg, device, tboard_base, checkpoints_base, only_last_best=False):
 
 	model = build_model(cfg, num_classes, device)
 
-	criterion = nn.CrossEntropyLoss()
+	# Use reduction='none' if collecting inference outputs, otherwise use default 'mean'
+	criterion = nn.CrossEntropyLoss(reduction='none' if inference_cfg else 'mean')
 	optimizer = make_optimizer(model, cfg)
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
 
@@ -171,10 +289,63 @@ def do_run(cfg, device, tboard_base, checkpoints_base, only_last_best=False):
 	for epoch in range(1, epochs + 1):
 		t0 = time.time()
 		logger.info(f'--- Epoch {epoch}/{epochs} ---')
-		train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, epoch, writer)
+		
+		# Determine if we should collect inference outputs this epoch
+		should_collect_inference = False
+		if inference_cfg is not None:
+			inference_schedule = inference_cfg.get('schedule', 'all')
+			if inference_schedule == 'all':
+				should_collect_inference = True
+			elif inference_schedule == 'last' and epoch == epochs:
+				should_collect_inference = True
+			elif isinstance(inference_schedule, list) and len(inference_schedule) == 3:
+				# Format: [start, end, step] - check if (epoch-1) is in this range
+				should_collect_inference = (epoch - 1) in list(range(inference_schedule[0], inference_schedule[1], inference_schedule[2]))
+			elif isinstance(inference_schedule, list):
+				# Format: list of specific epochs
+				should_collect_inference = (epoch - 1) in inference_schedule
+			elif isinstance(inference_schedule, int):
+				# Format: interval - every N epochs
+				should_collect_inference = ((epoch - 1) % inference_schedule == 0)
+		
+		# Attach hooks if collecting inference outputs
+		train_hooks = []
+		val_hooks = []
+		train_activations = {}
+		val_activations = {}
+		
+		if should_collect_inference:
+			model_arch = inference_cfg['model']
+			collection = inference_cfg.get('collect', {}).get(model_arch, [])
+			train_hooks = run_inference.attach_collection_hooks(model, collection, train_activations)
+		
+		# Training pass (with optional collection)
+		train_result = train_epoch(model, train_loader, criterion, optimizer, device, epoch, writer, collect_outputs=should_collect_inference)
+		if should_collect_inference:
+			train_loss, train_acc, train_outputs = train_result
+		else:
+			train_loss, train_acc = train_result
+			
+		# Remove train hooks and attach val hooks
+		if should_collect_inference:
+			for h in train_hooks:
+				h.remove()
+			val_hooks = run_inference.attach_collection_hooks(model, collection, val_activations)
+		
 		scheduler.step()
 		logger.info('Evaluating on validation set...')
-		val_loss, val_acc = validate(model, test_loader, criterion, device)
+		
+		# Validation pass (with optional collection)
+		val_result = validate(model, test_loader, criterion, device, collect_outputs=should_collect_inference)
+		if should_collect_inference:
+			val_loss, val_acc, val_outputs = val_result
+		else:
+			val_loss, val_acc = val_result
+			
+		# Remove val hooks
+		if should_collect_inference:
+			for h in val_hooks:
+				h.remove()
 
 		writer.add_scalar('train/loss', train_loss, epoch)
 		writer.add_scalar('train/accuracy', train_acc, epoch)
@@ -187,6 +358,13 @@ def do_run(cfg, device, tboard_base, checkpoints_base, only_last_best=False):
 
 		epoch_time = time.time() - t0
 		logger.info(f'Epoch {epoch}/{epochs} - train_loss: {train_loss:.4f}, train_acc: {train_acc:.4f}, val_loss: {val_loss:.4f}, val_acc: {val_acc:.4f} ({epoch_time:.1f}s)')
+
+		# Save inference outputs if collected
+		if should_collect_inference:
+			try:
+				save_inference_outputs(epoch - 1, train_outputs, val_outputs, train_activations, val_activations, inference_cfg['output_root'])
+			except Exception as e:
+				logger.error(f'Error saving inference outputs for epoch {epoch}: {e}')
 
 		# checkpoint
 		state = {
@@ -221,6 +399,7 @@ def main(argv=None):
 	parser.add_argument('--output_file', '-o', required=True, help='output file to log metrics to')
 	parser.add_argument('--tensorboard_dir', default=None, help='override tensorboard dir from config')
 	parser.add_argument('--checkpoint_dir', default=None, help='override checkpoint dir from config')
+	parser.add_argument('--inference_config', default=None, help='YAML config for running inference during training')
 	args = parser.parse_args(argv)
 
 	with open(args.config, 'r') as f:
@@ -278,6 +457,13 @@ def main(argv=None):
 	if args.checkpoint_dir:
 		global_cfg['checkpoint_dir'] = args.checkpoint_dir
 
+	# Load inference config if provided
+	inference_cfg = None
+	if args.inference_config:
+		logger.info(f'Loading inference config from {args.inference_config}')
+		with open(args.inference_config, 'r') as f:
+			inference_cfg = yaml.safe_load(f)
+
 	device = torch.device(global_cfg.get('device', 'cpu'))
 
 	if random_intervals is not None:
@@ -298,8 +484,26 @@ def main(argv=None):
 		os.makedirs(tb_dir, exist_ok=False)
 		os.makedirs(ckpt_dir, exist_ok=False)
 
+		# Prepare inference config for this run
+		run_inference_cfg = None
+		if inference_cfg:
+			run_inference_cfg = copy.deepcopy(inference_cfg)
+			run_inference_cfg['model'] = cfg['model']
+			run_inference_cfg['output_root'] = os.path.join(inference_cfg["save_dir"], name, datestr)
+   
+			if name not in inference_cfg["do"]:
+				run_inference_cfg = None  # skip inference for this run
+				logger.info(f'Skipping inference collection for run {name}')
+			else:
+				logger.info(f'Inference will be collected for run {name} at: {run_inference_cfg["output_root"]}')
+				run_inference_cfg['collect'] = inference_cfg["collect"][cfg["model"]]
+				run_inference_cfg["schedule"] = inference_cfg["epochs"][cfg["dataset"]]
+				logger.info(f'Inference collection schedule: {run_inference_cfg["schedule"]}')
+				logger.info(f'Inference collection layers: {run_inference_cfg["collect"]}')
+
+
 		logger.info(f'\n=== Starting run: {name} ===')
-		do_run(cfg, device, tb_dir, ckpt_dir, only_last_best=only_last_best)
+		do_run(cfg, device, tb_dir, ckpt_dir, only_last_best=only_last_best, inference_cfg=run_inference_cfg)
 		logger.info(f'=== Finished run: {name} ===\n')
 
 

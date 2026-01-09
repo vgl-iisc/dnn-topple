@@ -34,18 +34,20 @@ def compute_prevs(feats: list[RichFeature]):
 			prevs_edges.append(-1)
    
 	return prevs_edges
- 
-def make_icicle_inner(feats: list[RichFeature], use_colors: str = "loss"):
+
+EPS = 1e-8
+
+def make_icicle_inner(feats: list[RichFeature], use_colors: str = "vol", style="remainder"):
 	labels = [f"{f.id}" for f in feats]
 	parents = [str(prev) if prev != -1 else "" for prev in compute_prevs(feats)]
 	values = [f.size for f in feats]
  
 	if use_colors == "vol":
-		colors = [np.log(v) for v in values]
+		colors = [np.log(v + EPS) for v in values]
 		average_col = np.mean(colors)
 		marker = dict(colors=colors, colorscale='RdBu_r', cmid=average_col)
 	elif use_colors == "loss":
-		colors = [np.log((f.fn_frm + f.fn_to) / 2) for f in feats]
+		colors = [np.log((f.fn_frm + f.fn_to) / 2 + EPS) for f in feats]
 		average_col = np.mean(colors)
 		marker = dict(colors=colors, colorscale='RdBu_r', cmid=average_col)
 	else:
@@ -57,13 +59,14 @@ def make_icicle_inner(feats: list[RichFeature], use_colors: str = "loss"):
 		values=values,
 		root_color="lightgrey",
   		tiling = dict(orientation='v'),
-		marker=marker
+		marker=marker,
+		branchvalues=style
 	))
  
 	fig.update_layout(margin = dict(t=50, l=25, r=25, b=25))
 	return fig
 
-def make_icicle(ctree_path: str, topk: int = -1, thresh: float = 1e-6):
+def make_icicle(ctree_path: str, topk: int = -1, thresh: float = 1e-6, style="remainder"):
 	feats = ct.TopologicalFeatures()
 	feats.loadData(ctree_path)
 	
@@ -72,4 +75,4 @@ def make_icicle(ctree_path: str, topk: int = -1, thresh: float = 1e-6):
  
 	arc_feats = resolve_sizes(ctree_path, arc_feats)
   
-	return make_icicle_inner(arc_feats)
+	return make_icicle_inner(arc_feats, style=style)

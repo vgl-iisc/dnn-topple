@@ -20,6 +20,7 @@ import torchvision as tv
 import imagenet_loader
 import cifar10_loader
 import mnist_loader
+import emnist_loader
 import model_loader
 
 import pandas as pd
@@ -53,6 +54,21 @@ def get_dataloaders(dataset, data_root, random_label_prop=0.0):
 		_, test_tf = mnist_loader.get_mnist_transforms()
 		train_loader, test_loader = mnist_loader.make_mnist_dataloaders(
 			data_root, batch_size=BATCH_SIZE, transform=test_tf, shuffle=False, random_label_prop=random_label_prop
+		)
+	elif dataset == 'emnist':
+		_, test_tf = emnist_loader.get_emnist_transforms()
+		train_loader, test_loader = emnist_loader.make_emnist_dataloaders(
+			data_root, variant='byclass', batch_size=BATCH_SIZE, transform=test_tf, shuffle=False, random_label_prop=random_label_prop
+		)
+	elif dataset == 'emnist_balanced':
+		_, test_tf = emnist_loader.get_emnist_transforms()
+		train_loader, test_loader = emnist_loader.make_emnist_dataloaders(
+			data_root, variant='balanced', batch_size=BATCH_SIZE, transform=test_tf, shuffle=False, random_label_prop=random_label_prop
+		)
+	elif dataset == 'emnist_letters':
+		_, test_tf = emnist_loader.get_emnist_transforms()
+		train_loader, test_loader = emnist_loader.make_emnist_dataloaders(
+			data_root, variant='letters', batch_size=BATCH_SIZE, transform=test_tf, shuffle=False, random_label_prop=random_label_prop
 		)
 	elif dataset == "imagenetpt":
 		test_tf = tv.models.ResNet50_Weights.IMAGENET1K_V1.transforms()
