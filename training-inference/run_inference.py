@@ -15,7 +15,9 @@ from glob import glob
 
 import torch
 import torch.nn as nn
+import torchvision as tv
 
+import imagenet_loader
 import cifar10_loader
 import mnist_loader
 import model_loader
@@ -52,6 +54,9 @@ def get_dataloaders(dataset, data_root, random_label_prop=0.0):
 		train_loader, test_loader = mnist_loader.make_mnist_dataloaders(
 			data_root, batch_size=BATCH_SIZE, transform=test_tf, shuffle=False, random_label_prop=random_label_prop
 		)
+	elif dataset == "imagenetpt":
+		test_tf = tv.models.ResNet50_Weights.IMAGENET1K_V1.transforms()
+		train_loader, test_loader = imagenet_loader.make_imagenet_dataloaders(data_root, batch_size=int(BATCH_SIZE / 1.5), train_transform=test_tf, test_transform=test_tf, shuffle=False)
 	else:
 		raise ValueError(f'Unsupported dataset: {dataset}')
 	return train_loader, test_loader
@@ -199,39 +204,44 @@ def do_run(dataset, data_root, arch, checkpoints_dir, collection, epochs, output
 	train_loader, test_loader = get_dataloaders(dataset, data_root, random_label_prop=random_prop)
 	num_classes = train_loader.dataset.num_classes
 
-	logger.info(f"Looking for checkpoints in {checkpoints_dir}")
-	best_epoch = int(glob("best_e*.pt", root_dir=checkpoints_dir)[0].split("_e")[-1].split(".pt")[0])
-	run_epochs = set()
+	if checkpoints_dir is not None:
+		logger.info(f"Looking for checkpoints in {checkpoints_dir}")
+		best_epoch = int(glob("best_e*.pt", root_dir=checkpoints_dir)[0].split("_e")[-1].split(".pt")[0])
+		run_epochs = set()
 
-	all_epochs = glob("checkpoint_e*.pt", root_dir=checkpoints_dir)
-	all_epochs = [int(f.split("_e")[-1].split(".pt")[0]) for f in all_epochs]
-	last_epoch = max(all_epochs)
- 
-	logger.info(f"Best epoch: {best_epoch}, last epoch: {last_epoch}")
- 
-	for epoch_range in epochs:
-		if epoch_range == "best":
-			run_epochs.add(best_epoch)
-		elif epoch_range == "last":
-			run_epochs.add(last_epoch)
-		elif epoch_range == "all":
-			run_epochs.update(all_epochs)
-			run_epochs.add(0)
-		elif isinstance(epoch_range, int):
-			run_epochs.add(epoch_range)
-		elif isinstance(epoch_range, list):
-			run_epochs.update(range(*map(int, epoch_range)))
- 
+		all_epochs = glob("checkpoint_e*.pt", root_dir=checkpoints_dir)
+		all_epochs = [int(f.split("_e")[-1].split(".pt")[0]) for f in all_epochs]
+		last_epoch = max(all_epochs)
+	
+		logger.info(f"Best epoch: {best_epoch}, last epoch: {last_epoch}")
+	
+		for epoch_range in epochs:
+			if epoch_range == "best":
+				run_epochs.add(best_epoch)
+			elif epoch_range == "last":
+				run_epochs.add(last_epoch)
+			elif epoch_range == "all":
+				run_epochs.update(all_epochs)
+				run_epochs.add(0)
+			elif isinstance(epoch_range, int):
+				run_epochs.add(epoch_range)
+			elif isinstance(epoch_range, list):
+				run_epochs.update(range(*map(int, epoch_range)))
+	else:
+		run_epochs = {0}
+		best_epoch = 0
+		last_epoch = 0
+	
 	logger.info(f"Will run inference for epochs: {sorted(run_epochs)}")
 	epoch_results = {}
  
 	for epoch in run_epochs:
 		logger.info(f"Processing epoch {epoch}...")
 
-		ckpt = os.path.join(checkpoints_dir, f"checkpoint_e{epoch}.pt")
-
 		if epoch == 0:
 			ckpt = None
+		else:
+			ckpt = os.path.join(checkpoints_dir, f"checkpoint_e{epoch}.pt")
    
 		model = build_model(arch, num_classes, device, checkpoint=ckpt)
 		
@@ -329,26 +339,31 @@ def main(argv=None):
 		collect = cfg["collect"][model]
 		epochs = cfg["epochs"][dataset]
   
-		checkpoints_dir = os.path.join(base_checkpoints_dir, task)
-		output_root = os.path.join(base_output_root, task)
-  
-		biggest_name = None
-		biggest = 0
-		if len(glob("*.pt", root_dir=checkpoints_dir)) == 0:
-			sorted_dirs = sorted(list(os.listdir(checkpoints_dir)))
-			
-			for dir in sorted_dirs:
-				dir_path = os.path.join(checkpoints_dir, dir)
-				if not os.path.isdir(dir_path):
-					continue
+		if not base_checkpoints_dir is None:
+			checkpoints_dir = os.path.join(base_checkpoints_dir, task)
+			output_root = os.path.join(base_output_root, task)
+	
+			biggest_name = None
+			biggest = 0
+			if len(glob("*.pt", root_dir=checkpoints_dir)) == 0:
+				sorted_dirs = sorted(list(os.listdir(checkpoints_dir)))
+				
+				for dir in sorted_dirs:
+					dir_path = os.path.join(checkpoints_dir, dir)
+					if not os.path.isdir(dir_path):
+						continue
 
-				weights = glob("*.pt", root_dir=dir_path)
-				if len(weights) >= biggest:
-					biggest = len(weights)
-					biggest_name = dir
+					weights = glob("*.pt", root_dir=dir_path)
+					if len(weights) >= biggest:
+						biggest = len(weights)
+						biggest_name = dir
 
-			checkpoints_dir = os.path.join(checkpoints_dir, biggest_name)
-			logger.info(f"found biggest weights dir for {task}: {checkpoints_dir} ({biggest})")
+				checkpoints_dir = os.path.join(checkpoints_dir, biggest_name)
+				logger.info(f"found biggest weights dir for {task}: {checkpoints_dir} ({biggest})")
+		else:
+			logger.info(f"No checkpoints_dir specified, using random/init weights for {task}")
+			checkpoints_dir = None
+			output_root = os.path.join(base_output_root, task)
 
 		do_run(dataset, cfg["datasets"][dataset], model, checkpoints_dir, collect, epochs, output_root, device, random_prop=random_prop)
 

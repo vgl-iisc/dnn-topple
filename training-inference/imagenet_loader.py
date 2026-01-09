@@ -65,6 +65,7 @@ class ImageNetDataset(Dataset):
         # ImageNet doesn't load all data into memory, so we'll access it dynamically
         self.dataset = self.imagenet
         self.labels = np.array([self.imagenet.targets[i] for i in range(len(self.imagenet))], dtype=np.int64)
+        self.classnames = self.imagenet.classes
         
         if random_label_prop > 0.0:
             rng = np.random.RandomState(SEED)
@@ -92,15 +93,18 @@ class ImageNetDataset(Dataset):
         return int(self.labels.shape[0])
 
     def __getitem__(self, idx: int):
+        original_idx = idx
         idx = int(self.perm[idx].item())
-        img, _ = self.dataset[idx]  # ImageNet returns (PIL Image, label)
+        img, imglabel = self.dataset[idx]  # ImageNet returns (PIL Image, label)
 
         tensor_img = self.transform(img)
 
         label = int(self.labels[idx])
+        # Note: assertion disabled for subset case where labels may not match original dataset
+        # assert label == imglabel, f"Label mismatch at index {idx}: {label} vs {imglabel}"
         tensor_label = torch.tensor(label, dtype=torch.long)
         # return a dict so original (shuffled) index can be retrieved for mapping
-        return {"image": tensor_img, "label": tensor_label, "index": idx}
+        return {"image": tensor_img, "label": tensor_label, "index": original_idx}
 
 
 def make_imagenet_dataloaders(
@@ -110,14 +114,16 @@ def make_imagenet_dataloaders(
     test_transform: Optional[Callable] = None,
     random_label_prop: float = 0.0,
     shuffle: bool = False,
+    train_subset: Optional[int] = None,
+    test_subset: Optional[int] = None,
 ) -> Tuple[DataLoader, DataLoader]:
     """Create train and val DataLoaders for ImageNet stored under `data_root`.
 
     The underlying torchvision dataset must already be present under `data_root`.
     ImageNet should be organized in the standard format with train/ and val/ subdirectories.
     """
-    train_ds = ImageNetDataset(root=data_root, split='train', transform=train_transform, random_label_prop=random_label_prop)
-    test_ds = ImageNetDataset(root=data_root, split='val', transform=test_transform)
+    train_ds = ImageNetDataset(root=data_root, split='train', transform=train_transform, random_label_prop=random_label_prop, subset=train_subset)
+    test_ds = ImageNetDataset(root=data_root, split='val', transform=test_transform, subset=test_subset)
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle)
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=shuffle)

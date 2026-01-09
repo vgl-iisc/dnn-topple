@@ -1,0 +1,24 @@
+datasets: 
+  imagenetpt: /media/solis/DATA/imagenet
+
+epochs:
+  imagenetpt: 
+    - all
+
+collect:
+  resnet50pt:
+    - path: fc
+      tag: 1
+
+
+runs:
+  resnet50pt_imagenetsb:
+    model: resnet50pt
+    dataset: imagenetpt
+
+do:
+  - resnet50pt_imagenetsb
+
+checkpoints_dir: null
+save_dir: /media/santripta/data2/Inference_imagenet/landscape_data_cross_epoch/
+device: cuda:0

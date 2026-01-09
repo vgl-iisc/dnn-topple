@@ -5,6 +5,7 @@ Provides standard torchvision model constructors for classification experiments:
 - resnet18
 - vgg16
 - wide_resnet50_2
+- resnet50pt (Pretrained on ImageNet)
 
 Each constructor can optionally load a checkpoint and will return a torch.nn.Module
 on the requested device.
@@ -23,7 +24,7 @@ import torchvision.models as tv_models
 # Canonical torchvision constructors are provided; create_model accepts several
 # legacy aliases for backwards compatibility.
 
-AVAILABLE_MODELS = ['densenet121', 'resnet18', 'vgg16', 'wide_resnet50_2']
+AVAILABLE_MODELS = ['densenet121', 'resnet18', 'vgg16', 'wide_resnet50_2', 'resnet50pt']
 
 def resnet18(num_classes: int = 10) -> nn.Module:
     """Return torchvision's resnet18"""
@@ -55,6 +56,16 @@ def wide_resnet50_2(num_classes: int = 10) -> nn.Module:
                 model.fc = nn.Linear(in_features, num_classes)
                 print("added a linear layer at 'fc'")
                 break
+    return model
+
+# ---------------------- ResNet50 pretrained on ImageNet ----------------------
+def resnet50pt(num_classes: int = 1000) -> nn.Module:
+    """Return torchvision's resnet50 pretrained on ImageNet"""
+    model = tv_models.resnet50(weights=tv_models.ResNet50_Weights.IMAGENET1K_V1)
+    # Only replace the fc layer if num_classes differs from ImageNet's 1000
+    if num_classes != 1000:
+        in_features = model.fc.in_features
+        model.fc = nn.Linear(in_features, num_classes)
     return model
 
 
@@ -148,8 +159,10 @@ def create_model(
         model = vgg16(num_classes=num_classes)
     elif arch == 'wide_resnet50_2':
         model = wide_resnet50_2(num_classes=num_classes)
+    elif arch == 'resnet50pt':
+        model = resnet50pt(num_classes=num_classes)
     else:
-        raise ValueError(f'Unknown architecture: {arch}. Use canonical names: densenet121, resnet18, vgg16, wide_resnet50_2')
+        raise ValueError(f'Unknown architecture: {arch}. Use canonical names: densenet121, resnet18, vgg16, wide_resnet50_2, resnet50pt')
 
     model = _load_checkpoint(model, checkpoint, dev)
     model.to(dev)

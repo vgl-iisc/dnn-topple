@@ -109,7 +109,10 @@ def main():
     exact = True
     times_dict = {}
 
+    logging.info(f"Starting k-NN complex computation in {data_dir}, saving to {complexes_dir}, max_k={max_k}, method={method}")
+
     for root, dirs, files in os.walk(data_dir):
+        logging.info(f"Processing directory: {root}")
         if not "Tensors" in root:
             continue
 
@@ -118,6 +121,8 @@ def main():
 
         if len(tensor_files_2) > 0:
             tensor_files = tensor_files_2
+
+        logging.info(f"Found {len(tensor_files)} tensor files in {root}")
 
         if len(tensor_files) == 0:
             continue
