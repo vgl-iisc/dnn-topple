@@ -35,7 +35,7 @@ def compute_prevs(feats: list[RichFeature]):
    
 	return prevs_edges
  
-def make_icicle_inner(feats: list[RichFeature], use_colors: str = "vol"):
+def make_icicle_inner(feats: list[RichFeature], use_colors: str = "loss"):
 	labels = [f"{f.id}" for f in feats]
 	parents = [str(prev) if prev != -1 else "" for prev in compute_prevs(feats)]
 	values = [f.size for f in feats]

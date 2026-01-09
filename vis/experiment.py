@@ -140,6 +140,7 @@ def find_all_experiments(datasets: dict[str, Dataset], data_dir: str, ct_dir: st
 
         model_data, split = parts
         model, dataset_name = model_data.split("_")
+        
         print(f"Model: {model}, Dataset: {dataset_name}, Split: {split}")
 
         if dataset_name not in datasets:

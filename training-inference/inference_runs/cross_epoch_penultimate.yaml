@@ -8,6 +8,8 @@ epochs:
     - [0, 51, 3]
   mnist: 
     - all
+  imagenet:
+    - all
 
 collect:
   densenet121:

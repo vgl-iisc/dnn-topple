@@ -4,6 +4,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../trai
 
 from cifar10_loader import make_cifar10_dataloaders
 from mnist_loader import make_mnist_dataloaders
+from imagenet_loader import make_imagenet_dataloaders
 
 from vis_utils import LossLandscapeExperiment
 
@@ -32,12 +33,16 @@ def load_dataset(exp: LossLandscapeExperiment):
 
 	root = os.path.join(exp.dataset.path, "data")
 
-	if ds_name.lower() == "mnist":
+	ds_name_l = ds_name.lower()
+
+	if ds_name_l == "mnist":
 		train_loader, test_loader = make_mnist_dataloaders(root, batch_size=1)
 		
-	elif ds_name.lower() == "cifar" or ds_name.lower() == "cifar10":
+	elif ds_name_l == "cifar" or ds_name_l == "cifar10":
 		train_loader, test_loader = make_cifar10_dataloaders(root, batch_size=1)
   
+	elif ds_name_l == "imagenet" or ds_name_l == "imagenetsb":
+		train_loader, test_loader = make_imagenet_dataloaders(root, batch_size=1)
 
 	ds = []
 	print(order)
