@@ -19,6 +19,8 @@ import pandas as pd
 import altair as alt
 import numpy as np
 
+from pyinstrument import Profiler
+
 import pickle
 
 from experiment import Dataset, LossLandscapeExperiment, find_all_datasets, find_all_experiments
@@ -38,19 +40,25 @@ def clear_features(id: int):
     st.session_state[f"feats_{id}"] = None
 
 def compute_arcs_and_coverage(id: int, simpl: float):
-    
     exp = st.session_state.get(f"selected_experiment_{id}", None)
     clear_features(id)
     st.session_state[f"computed_simpl_{id}"] = simpl
     
     with st.spinner(f"Computing arcs and coverage at simplification {simpl}..."):
-        feats, data = compute_arc_features(exp, simpl)
+        # All these functions are now cached at (experiment, simplification) level
+        data_dir = st.session_state.landscapes_dir
+        ct_dir = st.session_state.ct_dir
+        
+        feats, data = compute_arc_features(exp, simpl, data_dir, ct_dir)
         st.session_state[f"feats_{id}"] = feats
         st.session_state[f"ctdata_{id}"] = data
-        node2feat = compute_feature_map(exp, feats)
+        
+        node2feat = compute_feature_map(exp, feats, data_dir, ct_dir)
         st.session_state[f"node2feat_{id}"] = node2feat
-        preds = load_preds(exp)
+        
+        preds = load_preds(exp, data_dir, ct_dir)
         st.session_state[f"preds_{id}"] = preds
+        
         compute_feature_coverage_data(exp, feats, preds)
         
 # TODO: one idea would be to lift all keys into lambda functions so they are only evaluated when needed, and consistent throughout
@@ -82,8 +90,6 @@ def float_input(key: str, label: str, default: float, min_value = None, max_valu
 
     return fval
 
-# TODO: we'd really like to fragment, but there's a really strange bug that makes the app unusable, so for now we just use a normal function
-# @st.fragment
 def render_experiment(id: int, half_width: bool):
 
     def remove_experiment():
@@ -109,14 +115,18 @@ def render_experiment(id: int, half_width: bool):
 
     with st.expander("Steady State Finder", expanded=False):
         threshs, num_min = valley_vs_thresh_data(exp, 0.0)
-        
+                    
         data = pd.DataFrame({"Simplification Threshold": threshs, "Number of Minima": num_min}).sort_values(by="Number of Minima", ascending=False)
 
         chart = alt.Chart(data).mark_line(interpolate='step-after').encode(
             x="Simplification Threshold",
             y=alt.Y("Number of Minima", scale=alt.Scale(type="log")),
             tooltip=["Simplification Threshold", "Number of Minima"],
-        ).interactive()
+        )
+        
+        # add a brush to select simplification range
+        brush = alt.selection_interval(encodings=['x'], bind="scales")
+        chart = chart.add_params(brush)
         
         st.altair_chart(chart, use_container_width=True)
         
@@ -128,22 +138,27 @@ def render_experiment(id: int, half_width: bool):
         if st.button("Compute Tree and Coverage", key=f"compute_button_{id}"):
             compute_arcs_and_coverage(id, simpl)
 
-    if half_width:
-        tree_container = st.container()
-        cov_container = st.container()
-    else:
-        tree_container, cov_container = st.columns([3, 2])
+    @st.fragment
+    def main_body():
+        if half_width:
+            tree_container = st.container()
+            cov_container = st.container()
+        else:
+            tree_container, cov_container = st.columns([3, 2])
 
-    with tree_container:
-        st.subheader("Tree Explorer")
+        with tree_container:
+            st.subheader("Tree Explorer")
 
-        render_tree_explorer(id)
+            render_tree_explorer(id)
 
-    with cov_container:
-        st.subheader("Coverage Map")
+        with cov_container:
+            st.subheader("Coverage Map")
 
-        render_coverage_map(id)
+            render_coverage_map(id)
+            
+    main_body()
 
+@st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__})
 def valley_vs_thresh_data(exp: LossLandscapeExperiment, tol: float) -> tuple[list[float], list[int]]:
     paths = exp.get_paths(st.session_state.landscapes_dir, st.session_state.ct_dir)
     
@@ -239,6 +254,14 @@ def main():
             with st.expander(id2title(exp), expanded=True):
                 render_experiment(exp, half_width=False)
 
-
 if __name__ == "__main__":
+    # profiler = Profiler()
+    # profiler.start()
     main()
+    # profiler.stop()
+    # 
+    # run_id = st.session_state.get("run_id", 0)
+    # with open(f"app_profile_{run_id}.html", "w") as f:
+    #     f.write(profiler.output_html())
+    
+    # st.session_state["run_id"] = run_id + 1    

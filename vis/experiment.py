@@ -1,5 +1,6 @@
 import os
 from glob import glob
+import pandas as pd
 import sys
 
 class Dataset:
@@ -11,8 +12,7 @@ class Dataset:
         
         self.size_by_split = {split: 0 for split in splits}
                 
-        with open(classes_path, 'r') as f:
-            self.classes = f.readline().split(",")
+        self.classes = pd.read_csv(classes_path, header=None)[0].tolist()
             
         self.labels_by_split = {split: [] for split in splits}
         self.class_size_by_split = {split: {clss: 0 for clss in self.classes} for split in splits}
@@ -20,15 +20,17 @@ class Dataset:
         
         for split in splits:
             split_path = self.get_split_path(split)
-            with open(split_path, 'r') as f:
-                lines = f.readlines()[1:]  # Skip header
-                self.size_by_split[split] = len(lines)
-                for line in lines:
-                    label = int(line.strip().split(",")[-1])
-                    self.labels_by_split[split].append(label)
-                    self.class_size_by_split[split][self.classes[label]] += 1
-                    
-                    self.largest_class_size_by_split[split] = max(self.largest_class_size_by_split[split], self.class_size_by_split[split][self.classes[label]])
+            split_df = pd.read_csv(split_path)
+            self.size_by_split[split] = len(split_df)
+            
+            counts = split_df.iloc[:, -1].value_counts()
+            unique_labels = counts.index
+            self.labels_by_split[split] = sorted(unique_labels.tolist())
+            max_size = 0
+            for label in unique_labels:
+                self.class_size_by_split[split][self.classes[label]] = counts[label]
+                max_size = max(max_size, counts[label])
+            self.largest_class_size_by_split[split] = max_size
                     
     def get_split_path(self, split: str) -> str:
         return os.path.join(self.path, f"{split}.csv")
@@ -139,7 +141,9 @@ def find_all_experiments(datasets: dict[str, Dataset], data_dir: str, ct_dir: st
         assert len(parts) == 2
 
         model_data, split = parts
-        model, dataset_name = model_data.split("_")
+        parts = model_data.split("_")
+        model = parts[0]
+        dataset_name = "_".join(parts[1:])
         
         print(f"Model: {model}, Dataset: {dataset_name}, Split: {split}")
 

@@ -104,9 +104,8 @@ class RichFeature:
         self.pred_accuracy: float = 0.0
         
 
-def compute_arc_features(exp: LossLandscapeExperiment, simpl: float, data_dir=None, ct_dir=None):
-    data_dir = data_dir if data_dir is not None else st.session_state.landscapes_dir
-    ct_dir = ct_dir if ct_dir is not None else st.session_state.ct_dir
+@st.cache_resource(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__})
+def compute_arc_features(exp: LossLandscapeExperiment, simpl: float, data_dir: str, ct_dir: str):
     ctree_name = exp.get_paths(data_dir, ct_dir)["ctree"]
         
     topo = ct.TopologicalFeatures()
@@ -191,6 +190,7 @@ def rooted_tree_from_exp(exp: LossLandscapeExperiment, simpl: float, data_dir: s
     
     return nxg
 
+@st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x))})
 def compute_tree_graph(exp: LossLandscapeExperiment, features: list[RichFeature], steiner_mode: str, ego_origin: str, ego_radius: int, simplify_saddles: bool = False):
     useful_nodes = set()
     minima_nodes = set()
@@ -258,17 +258,12 @@ def make_arc_map(features: list[RichFeature]):
     
     return arc_map
 
-def compute_feature_map(exp: LossLandscapeExperiment, features: list[RichFeature], data_dir = None, ct_dir = None) -> list[int]:
+@st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x))})
+def compute_feature_map(exp: LossLandscapeExperiment, features: list[RichFeature], data_dir: str, ct_dir: str) -> list[int]:
     """
     Computes a mapping from contour tree node (i.e. an embedded vector for a data point) to the contour tree feature it belongs to and vice versa.
     Also populates rich data in the feature objects.
     """
-    
-    if data_dir is None:
-        data_dir = st.session_state.landscapes_dir
-    
-    if ct_dir is None:
-        ct_dir = st.session_state.ct_dir
 
     ctree_path = exp.get_paths(data_dir, ct_dir)["ctree"]
 
@@ -321,14 +316,16 @@ def compute_feature_map(exp: LossLandscapeExperiment, features: list[RichFeature
 
     return point2feat
 
-def load_preds(exp: LossLandscapeExperiment) -> list[int]:
-    pred_path = exp.get_paths(st.session_state.landscapes_dir, st.session_state.ct_dir)["predictions"]
+@st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__})
+def load_preds(exp: LossLandscapeExperiment, data_dir: str, ct_dir: str) -> list[int]:
+    pred_path = exp.get_paths(data_dir, ct_dir)["predictions"]
     
     with open(pred_path, "rb") as f:
         preds = np.loadtxt(f, dtype=np.int32).reshape(-1)
     
     return preds.tolist()
 
+@st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x)) if x and isinstance(x[0], RichFeature) else hash(tuple(x))})
 def compute_feature_coverage_data(exp: LossLandscapeExperiment, features: list[RichFeature], preds: list[int]):
     """
     Computes per-feature coverage data, incorporating model predictions.

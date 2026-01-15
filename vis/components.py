@@ -52,7 +52,8 @@ def render_tree_explorer(id: int):
     
     exp = st.session_state.get(f"selected_experiment_{id}", None)
     
-    def arc_explorer_plot(features: list[RichFeature], axis_type: str | list[str]) -> alt.Chart:
+    @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x)) if x and isinstance(x[0], RichFeature) else hash(tuple(x))})
+    def arc_explorer_plot(exp: LossLandscapeExperiment, features: list[RichFeature], axis_type: str | list[str]) -> alt.Chart:
         
         max_pers = max([f.pers for f in features]) if len(features) > 0 else 1.0
         
@@ -120,7 +121,20 @@ def render_tree_explorer(id: int):
         if x_type == "sorted":
             x_type = st.multiselect("Sort by", options=list(ARC_X_AXIS_SORTING.keys()), default=["majority class", "fstart"], key=f"sort_type_selector_{id}")
         
-        filtered_features = [f for f in features if (f.type_frm, f.type_to) in allowed_types]
+        with st.container(horizontal=True, horizontal_alignment="center", gap="medium"):
+            filter_low_vol = st.number_input("Minimum Volume", min_value=0, value=0, step=1, key=f"min_volume_input_{id}")
+            filter_high_vol = st.number_input("Maximum Volume", min_value=0, value=1_000_000_000, step=1, key=f"max_volume_input_{id}")
+            
+            filter_low_loss_start = st.number_input("Minimum Loss Start", min_value=0.0, value=0.0, step=0.001, key=f"min_loss_start_input_{id}")
+            filter_high_loss_start = st.number_input("Maximum Loss Start", max_value=1e12, value=1e12, step=0.001, key=f"max_loss_start_input_{id}")
+            
+            filter_low_loss_end = st.number_input("Minimum Loss End", min_value=0.0, value=0.0, step=0.001, key=f"min_loss_end_input_{id}")
+            filter_high_loss_end = st.number_input("Maximum Loss End", max_value=1e12, value=1e12, step=0.001, key=f"max_loss_end_input_{id}")
+        
+        filtered_features = [f for f in features if f.size >= filter_low_vol and f.size <= filter_high_vol]
+        filtered_features = [f for f in filtered_features if f.fn_frm >= filter_low_loss_start and f.fn_frm <= filter_high_loss_start]
+        filtered_features = [f for f in filtered_features if f.fn_to >= filter_low_loss_end and f.fn_to <= filter_high_loss_end]
+        filtered_features = [f for f in filtered_features if (f.type_frm, f.type_to) in allowed_types]
         st.session_state[f"filtered_feats_{id}"] = filtered_features
         
         if len(filtered_features) == 0:
@@ -129,7 +143,7 @@ def render_tree_explorer(id: int):
 
         st.write(f"Rendering {len(filtered_features)} features at simplification {simpl}")
         
-        plot = arc_explorer_plot(filtered_features, x_type)
+        plot = arc_explorer_plot(exp, filtered_features, x_type)
         
         selection_dict = st.altair_chart(plot, use_container_width=True, on_select="rerun", key=f"arc_explorer_plot_{id}")
         
@@ -137,7 +151,8 @@ def render_tree_explorer(id: int):
             st.session_state[f"explorer_selected_arcs_{id}"] = [rec["id"] for rec in selection_dict["selection"]["arcs"]]
         else:
             st.session_state[f"explorer_selected_arcs_{id}"] = []
-            
+    
+    @st.fragment
     def tree_view(features, allowed_types):
         
         steiner_mode = "None"
@@ -165,7 +180,7 @@ def render_tree_explorer(id: int):
         if len(valid_features) == 0:
             st.warning("No features of the selected types.")
             return
-        
+
         if st.button("Recompute Tree Graph", key=f"recompute_tree_graph_{id}"):
             st.session_state[f"tree_graph_{id}"] = compute_tree_graph(exp, valid_features, steiner_mode, ego_origin, ego_radius, saddle_simpl)
 
@@ -178,14 +193,13 @@ def render_tree_explorer(id: int):
         st.text(f"{len(valid_features)} features selected. Rendering {len(gnx.edges)} features after processing. Connected: {nx.is_connected(gnx.to_undirected())}")
 
         # imbalance_metrics = compute_tree_imbalance_metrics(gnx)
-        imbalance_metrics = "hi"
         
         g = net.Network(height="600px", width="100%", directed=True)
         g.from_nx(gnx)
         
         html = g.generate_html()
         components.html(html, height=600)
-        st.write(imbalance_metrics)
+        # st.write(imbalance_metrics)
         
     features: list[RichFeature] | None = st.session_state.get(f"feats_{id}", None)
 
@@ -209,91 +223,10 @@ def render_tree_explorer(id: int):
 
 F2C_VIEWS = ["plain", "correctness", "class-wise confusion"]
 
+@st.fragment
 def render_coverage_map(id: int):
     
     exp = st.session_state.get(f"selected_experiment_{id}", None)
-    
-    def f2c_plot(feats: list[RichFeature], view: str, show_what: str, freeze_top: bool) -> alt.Chart | None:
-        classes = exp.dataset.classes
-        colors = {cls: class2color(i) for i, cls in enumerate(classes)}
-        node2label = exp.dataset.labels_by_split[exp.split]
-        preds = st.session_state.get(f"preds_{id}", {})
-    
-        if len(feats) == 0:
-            return None
-    
-        node_feats = set.union(*[set(zip(f.members, [f] * f.size)) for f in feats])
-        
-        max_class_size = max([exp.dataset.class_size_by_split[exp.split][cls] for cls in exp.dataset.classes])
-        
-        data = []
-        for (node, feat) in node_feats:
-            true_label = node2label[node]
-            pred_label = preds[node]
-            
-            data.append({
-                "Feature ID": feat.id,
-                "True Label": true_label,
-                "Predicted Label": pred_label,
-                "True Class": exp.dataset.classes[true_label],
-                "Predicted Class": exp.dataset.classes[pred_label],
-                "Correct": true_label == pred_label,
-            })
-                
-        if len(data) == 0:
-            return None
-                
-        df = pd.DataFrame(data)
-        
-        grouping = ["True Label", "True Class"]
-        color = None
-        pred_tooltip = None
-        
-        if view == "correctness":
-            grouping += ["Correct"]
-            color = alt.Color('Correct:N', scale=alt.Scale(domain=[True, False], range=["#4CAF50", "#F44336"]), title="Correctness")
-            pred_tooltip = alt.Tooltip('Correct', title="Prediction Correctness")
-        elif view == "class-wise confusion":
-            grouping += ["Predicted Label", "Predicted Class"]
-            color = alt.Color('Predicted Class:N', scale=alt.Scale(domain=list(colors.keys()), range=list(colors.values())), title="Prediction")
-            pred_tooltip = alt.Tooltip('Predicted Class', title="Predicted Class")
-
-        df = df.groupby(grouping).size().reset_index(name='count').sort_values(by=["count"], ascending=False)
-
-        df["Proportion"] = df['count'] / df['count'].sum()
-        df["Coverage"] = [get_class_coverage(exp, entry["count"], entry["True Label"]) for _, entry in df.iterrows()]
-        
-        scale = alt.Scale()
-        
-        if show_what == "Coverage":
-            y = alt.Y('Coverage', title="Class Coverage", axis=alt.Axis(format='%'))
-            if freeze_top:
-                scale = alt.Scale(domain=[0, 1.0])
-        elif show_what == "Proportions":
-            y = alt.Y('Proportion', title="Proportion", axis=alt.Axis(format='%'))
-            if freeze_top:
-                scale = alt.Scale(domain=[0, 1.0])
-        else:
-            y = alt.Y('count', title="Number of Points")
-            if freeze_top:
-                scale = alt.Scale(domain=[0, max_class_size])
-
-        y = y.scale(scale)
-        
-        plot = alt.Chart(df).mark_bar().encode(
-            x=alt.X('True Class:N', title="True Class"),
-            y=y,
-            color=color if color is not None else alt.Color('True Class:N', scale=alt.Scale(domain=list(colors.keys()), range=list(colors.values())), title="True Class"),
-            tooltip=[alt.Tooltip('count', title="Number of Points"), alt.Tooltip('True Class', title="True Class"), 
-                     alt.Tooltip('Coverage', title="Class Coverage").format('.3%'), alt.Tooltip('Proportion', title="Proportion").format('.3%')] + ([pred_tooltip] if pred_tooltip is not None else []),
-            order=alt.Order('True Class:N', sort='ascending')
-        ).properties(
-            width=600,
-            height=400
-        )
-        
-        return plot
-        
     
     features: list[RichFeature] | None = st.session_state.get(f"feats_{id}", None)
     
@@ -318,53 +251,106 @@ def render_coverage_map(id: int):
     f2c, acc, c2f, f2m, datex = st.tabs(["Feature to Class", "Accuracy", "Class to Feature", "Feature to Members", "Data Explorer"])
     selected_features = [features[fid] for fid in selection]
     node2feat = st.session_state.get(f"node2feat_{id}", [])
-    
-    with f2c:                
+    classes = exp.dataset.classes
+
+    @st.fragment
+    def f2c_viewer():
+        @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x)) if x and isinstance(x[0], RichFeature) else hash(tuple(x))})
+        def f2c_plot(exp: LossLandscapeExperiment, feats: list[RichFeature], preds: list[int], view: str, show_what: str, freeze_top: bool) -> alt.Chart | None:
+            classes = exp.dataset.classes
+            colors = {cls: class2color(i) for i, cls in enumerate(classes)}
+            node2label = exp.dataset.labels_by_split[exp.split]
+        
+            if len(feats) == 0:
+                return None
+        
+            node_feats = set.union(*[set(zip(f.members, [f] * f.size)) for f in feats])
+            
+            max_class_size = max([exp.dataset.class_size_by_split[exp.split][cls] for cls in exp.dataset.classes])
+            
+            data = []
+            for (node, feat) in node_feats:
+                true_label = node2label[node]
+                pred_label = preds[node]
+                
+                data.append({
+                    "Feature ID": feat.id,
+                    "True Label": true_label,
+                    "Predicted Label": pred_label,
+                    "True Class": exp.dataset.classes[true_label],
+                    "Predicted Class": exp.dataset.classes[pred_label],
+                    "Correct": true_label == pred_label,
+                })
+                    
+            if len(data) == 0:
+                return None
+                    
+            df = pd.DataFrame(data)
+            
+            grouping = ["True Label", "True Class"]
+            color = None
+            pred_tooltip = None
+            
+            if view == "correctness":
+                grouping += ["Correct"]
+                color = alt.Color('Correct:N', scale=alt.Scale(domain=[True, False], range=["#4CAF50", "#F44336"]), title="Correctness")
+                pred_tooltip = alt.Tooltip('Correct', title="Prediction Correctness")
+            elif view == "class-wise confusion":
+                grouping += ["Predicted Label", "Predicted Class"]
+                color = alt.Color('Predicted Class:N', scale=alt.Scale(domain=list(colors.keys()), range=list(colors.values())), title="Prediction")
+                pred_tooltip = alt.Tooltip('Predicted Class', title="Predicted Class")
+
+            df = df.groupby(grouping).size().reset_index(name='count').sort_values(by=["count"], ascending=False)
+
+            df["Proportion"] = df['count'] / df['count'].sum()
+            df["Coverage"] = [get_class_coverage(exp, entry["count"], entry["True Label"]) for _, entry in df.iterrows()]
+            
+            scale = alt.Scale()
+            
+            if show_what == "Coverage":
+                y = alt.Y('Coverage', title="Class Coverage", axis=alt.Axis(format='%'))
+                if freeze_top:
+                    scale = alt.Scale(domain=[0, 1.0])
+            elif show_what == "Proportions":
+                y = alt.Y('Proportion', title="Proportion", axis=alt.Axis(format='%'))
+                if freeze_top:
+                    scale = alt.Scale(domain=[0, 1.0])
+            else:
+                y = alt.Y('count', title="Number of Points")
+                if freeze_top:
+                    scale = alt.Scale(domain=[0, max_class_size])
+
+            y = y.scale(scale)
+            
+            plot = alt.Chart(df).mark_bar().encode(
+                x=alt.X('True Class:N', title="True Class"),
+                y=y,
+                color=color if color is not None else alt.Color('True Class:N', scale=alt.Scale(domain=list(colors.keys()), range=list(colors.values())), title="True Class"),
+                tooltip=[alt.Tooltip('count', title="Number of Points"), alt.Tooltip('True Class', title="True Class"), 
+                        alt.Tooltip('Coverage', title="Class Coverage").format('.3%'), alt.Tooltip('Proportion', title="Proportion").format('.3%')] + ([pred_tooltip] if pred_tooltip is not None else []),
+                order=alt.Order('True Class:N', sort='ascending')
+            ).properties(
+                width=600,
+                height=400
+            )
+            
+            return plot
+
         with st.container(horizontal=True, vertical_alignment="top", horizontal_alignment="left"):
             fine_grained = st.selectbox("View", key=f"fine_grained_{id}", options=F2C_VIEWS, format_func=lambda x: x.title())
             show_what = st.selectbox("Y-axis", key=f"show_what_{id}", options=["Counts", "Proportions", "Coverage"], index=2)
             freeze_top = st.checkbox("Freeze top", key=f"freeze_top_{id}", value=True)
-                
-        plot = f2c_plot(selected_features, fine_grained, show_what, freeze_top)
+        
+        preds = st.session_state.get(f"preds_{id}", [])
+        plot = f2c_plot(exp, selected_features, preds, fine_grained, show_what, freeze_top)
         
         if plot is None:
             st.warning("No datapoints in selection.")
         else:
             st.altair_chart(plot, use_container_width=True, key=f"f2c_plot_{id}")
-        
-    with acc:
-        total_points = sum([f.size for f in selected_features])
-        correct_points = 0
-        preds = st.session_state.get(f"preds_{id}", {})
-        node2label = exp.dataset.labels_by_split[exp.split]
-        
-        for f in selected_features:
-            correct_points += sum([1 for n in f.members if preds[n] == node2label[n]])
-                    
-        accuracy = correct_points / total_points if total_points > 0 else 0.0
-        
-        st.write(f"Accuracy over selected features: **{accuracy * 100.0:0.3f}%** ({correct_points} / {total_points})")
-        
-        confusion = pd.DataFrame(0, index=exp.dataset.classes, columns=exp.dataset.classes)
-        for f in selected_features:
-            for n in f.members:
-                true_cls = exp.dataset.classes[node2label[n]]
-                pred_cls = exp.dataset.classes[preds[n]]
-                confusion.at[true_cls, pred_cls] += 1
-                    
-        heat = alt.Chart(confusion.reset_index().melt(id_vars='index')).mark_rect().encode(
-            x=alt.X('variable:N', title="Predicted Class"),
-            y=alt.Y('index:N', title="True Class"),
-            color=alt.Color('value:Q', scale=alt.Scale(scheme='blues', type="symlog"), title="Number of Points"),
-            tooltip=[alt.Tooltip('value:Q', title="Number of Points"), alt.Tooltip('index:N', title="True Class"), alt.Tooltip('variable:N', title="Predicted Class")]
-        ).properties(
-            width=400,
-            height=400
-        )
-        
-        st.altair_chart(heat, use_container_width=True, key=f"confusion_heatmap_{id}")
-        
-    with c2f:
+    
+    @st.fragment
+    def c2f_viewer():
         selected_classes = st.multiselect("Co-Occurrences", options=exp.dataset.classes, default=[], key=f"class_selector_c2f_{id}")
         selected_labels = set(exp.dataset.classes.index(c) for c in selected_classes)
         
@@ -395,9 +381,9 @@ def render_coverage_map(id: int):
             df["Share"] = df["Share"]
             df["Coverage"] = df["Coverage"]
             st.dataframe(df, use_container_width=True, key=f"class_to_feature_table_{id}", hide_index=True)
-        
-    with f2m:
-        classes = exp.dataset.classes
+
+    @st.fragment
+    def f2m_viewer():
         selected_classes = st.multiselect("Filter Classes", options=classes, default=classes, key=f"member_classes_selector_f2m_{id}")
         selected_labels = set(classes.index(c) for c in selected_classes)
         f2m_features = [f for f in selected_features if any([lab in selected_labels for lab in f.class_counts.keys()])]
@@ -408,28 +394,43 @@ def render_coverage_map(id: int):
                 
                 with st.expander(f"Feature {f.id} ({len(relevant_members)} / {f.size})", expanded=False):
                     st.write(",".join(map(str, relevant_members)))
-    
-    def image_view(indices_fids: list[tuple[int, int]], datapoints: list, siamese: bool = False):
-        st.write(f"Loaded {len(datapoints)} data points.")
-        
-        key = f"data_explorer_image_view_{id}"
-        key += "_siamese" if siamese else ""
-        
-        if not len(datapoints) == 0:
+
+    @st.fragment
+    def datex_viewer():
+        @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__})
+        def load_datapoints_by_indices(exp: LossLandscapeExperiment, indices: tuple[int, ...]) -> list:
+            """Load datapoints from dataset by indices. Cached to avoid repeated expensive access."""
+            ds = load_dataset(exp)
+            return [ds[i] for i in indices]
+
+        def image_view(indices_fids: list[tuple[int, int]], datapoints: list, siamese: bool = False):
+            st.write(f"Loaded {len(datapoints)} data points.")
+            
+            key = f"data_explorer_image_view_{id}"
+            key += "_siamese" if siamese else ""
+            
             per_page = 16
-            page_count = (len(datapoints) + per_page - 1) // per_page
-            page = st.slider("Page", min_value=1, max_value=max(1, page_count), value=1, key=key) - 1
-            
-            with st.container(height=700):
-                cols = st.columns(4)
-                for i, ((idx, fid), data_point) in enumerate(list(zip(indices_fids, datapoints))[page * per_page:(page + 1) * per_page]):
-                    lbl = exp.dataset.classes[data_point["label"]]
-                    with cols[i % 4]:
-                        st.image(data_point['image'].numpy().transpose(1, 2, 0), caption=f"Idx {idx} ({fid}): {lbl}")
-        else:
-            st.info("No data points loaded.")
-            
-    with datex:
+            N = len(datapoints)
+            if N > 0 and N > per_page:
+                page_count = (len(datapoints) + per_page - 1) // per_page
+                page = st.slider("Page", min_value=1, max_value=max(1, page_count), value=1, key=key) - 1
+                
+                with st.container(height=700):
+                    cols = st.columns(4)
+                    for i, ((idx, fid), data_point) in enumerate(list(zip(indices_fids, datapoints))[page * per_page:(page + 1) * per_page]):
+                        lbl = exp.dataset.classes[data_point["label"]]
+                        with cols[i % 4]:
+                            st.image(data_point['image'].numpy().transpose(1, 2, 0), caption=f"Idx {idx} ({fid}): {lbl}")
+            elif N > 0:
+                with st.container(height=700):
+                    cols = st.columns(4)
+                    for i, ((idx, fid), data_point) in enumerate(zip(indices_fids, datapoints)):
+                        lbl = exp.dataset.classes[data_point["label"]]
+                        with cols[i % 4]:
+                            st.image(data_point['image'].numpy().transpose(1, 2, 0), caption=f"Idx {idx} ({fid}): {lbl}")
+            else:
+                st.info("No data points loaded.")
+        
         with st.container(horizontal=True, vertical_alignment="center"):
             mode = st.selectbox("Load Mode", options=["From Indices", "From Selected Features"], index=1, key=f"data_explorer_mode_selector_{id}")
             if mode == "From Selected Features":
@@ -440,7 +441,11 @@ def render_coverage_map(id: int):
         
         def load_from_indices_fids(indices_fids: list[tuple[int, int]], siamese: bool = False):
             st.session_state[f"loaded_indices_{id}"] = indices_fids
-            st.session_state[f"loaded_data_points_{id}"] = [ds[i] for i, _ in indices_fids if node2label[i] in selected_labels]
+            # Filter indices by selected labels
+            filtered_indices_fids = [(i, fid) for i, fid in indices_fids if node2label[i] in selected_labels]
+            filtered_indices = tuple(i for i, _ in filtered_indices_fids)
+            # Use cached loading function
+            st.session_state[f"loaded_data_points_{id}"] = load_datapoints_by_indices(exp, filtered_indices) if filtered_indices else []
             
             st.session_state[f"data_explorer_siamese_{id}"] = siamese
             
@@ -452,7 +457,9 @@ def render_coverage_map(id: int):
             siamese_indices_fids = [x for x in siamese_indices_fids if x not in indices_fids_set]
             
             st.session_state[f"siamese_indices_{id}"] = siamese_indices_fids
-            st.session_state[f"siamese_data_points_{id}"] = [ds[i] for i, _ in siamese_indices_fids]
+            siamese_indices = tuple(i for i, _ in siamese_indices_fids)
+            # Use cached loading function
+            st.session_state[f"siamese_data_points_{id}"] = load_datapoints_by_indices(exp, siamese_indices) if siamese_indices else []
 
         if mode == "From Indices" and cs_idx.strip() != "":
             indices_fids = []
@@ -499,6 +506,49 @@ def render_coverage_map(id: int):
                 image_view(siamese_indices_fids, siamese_datapoints, True)
         else:
             image_view(indices_fids, datapoints)
+        
+    with f2c:                
+        f2c_viewer()
+        
+    with acc:
+        total_points = sum([f.size for f in selected_features])
+        correct_points = 0
+        preds = st.session_state.get(f"preds_{id}", {})
+        node2label = exp.dataset.labels_by_split[exp.split]
+        
+        for f in selected_features:
+            correct_points += sum([1 for n in f.members if preds[n] == node2label[n]])
+                    
+        accuracy = correct_points / total_points if total_points > 0 else 0.0
+        
+        st.write(f"Accuracy over selected features: **{accuracy * 100.0:0.3f}%** ({correct_points} / {total_points})")
+        
+        confusion = pd.DataFrame(0, index=exp.dataset.classes, columns=exp.dataset.classes)
+        for f in selected_features:
+            for n in f.members:
+                true_cls = exp.dataset.classes[node2label[n]]
+                pred_cls = exp.dataset.classes[preds[n]]
+                confusion.at[true_cls, pred_cls] += 1
+                    
+        heat = alt.Chart(confusion.reset_index().melt(id_vars='index')).mark_rect().encode(
+            x=alt.X('variable:N', title="Predicted Class"),
+            y=alt.Y('index:N', title="True Class"),
+            color=alt.Color('value:Q', scale=alt.Scale(scheme='blues', type="symlog"), title="Number of Points"),
+            tooltip=[alt.Tooltip('value:Q', title="Number of Points"), alt.Tooltip('index:N', title="True Class"), alt.Tooltip('variable:N', title="Predicted Class")]
+        ).properties(
+            width=400,
+            height=400
+        )
+        
+        st.altair_chart(heat, use_container_width=True, key=f"confusion_heatmap_{id}")
+
+    with c2f:
+        c2f_viewer()        
+    with f2m:
+        f2m_viewer()
+                    
+    with datex:
+        datex_viewer()
 
 def render_experiment_selector(id: int, experiments: list[LossLandscapeExperiment]):
     
@@ -549,7 +599,7 @@ def render_save():
         os.makedirs("saved_states", exist_ok=True)
         now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        dump_dict = {k: st.session_state[k] for k in st.session_state if k not in ("preds_cache", "preds_cache_info") and not k.endswith("_button")}
+        dump_dict = {k: st.session_state[k] for k in st.session_state if not k.endswith("_button")}
         with open(f"saved_states/state_{now}.pkl", "wb") as f:
             pickle.dump(dump_dict, f)
 

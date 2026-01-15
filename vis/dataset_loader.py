@@ -5,6 +5,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../trai
 from cifar10_loader import make_cifar10_dataloaders
 from mnist_loader import make_mnist_dataloaders
 from imagenet_loader import make_imagenet_dataloaders
+from emnist_loader import make_emnist_dataloaders
 
 from vis_utils import LossLandscapeExperiment
 
@@ -12,7 +13,9 @@ import numpy as np
 import csv
 
 from torch.utils.data import ConcatDataset
+import streamlit as st
 
+@st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__})
 def load_dataset(exp: LossLandscapeExperiment):
 	ds_name = exp.dataset.name
 	
@@ -43,6 +46,9 @@ def load_dataset(exp: LossLandscapeExperiment):
   
 	elif ds_name_l == "imagenet" or ds_name_l == "imagenetsb":
 		train_loader, test_loader = make_imagenet_dataloaders(root, batch_size=1)
+  
+	elif ds_name_l == "emnist_letters":
+		train_loader, test_loader = make_emnist_dataloaders(root, batch_size=1, variant="letters")
 
 	ds = []
 	print(order)
