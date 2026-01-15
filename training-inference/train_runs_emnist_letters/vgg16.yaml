@@ -1,0 +1,12 @@
+runs:
+  vgg_emnist_letters:
+    seed: 1759764291
+    lr: 0.0001
+    dataset: emnist_letters
+
+model: vgg16
+batch_size: 128
+epochs: 150
+lr: 0.001
+momentum: 0.9
+weight_decay: 0.0005

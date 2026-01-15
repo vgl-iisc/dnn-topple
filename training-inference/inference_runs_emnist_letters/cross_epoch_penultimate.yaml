@@ -1,0 +1,31 @@
+datasets: 
+  emnist_letters: ./datasets/emnist_letters/data
+
+epochs:
+  emnist_letters: 
+    - all
+
+collect:
+  resnet18:
+    - path: fc
+      tag: 1
+
+  vgg16:
+    - path: classifier[6]
+      tag: 1
+runs:
+  resnet_emnist_letters:
+    model: resnet18
+    dataset: emnist_letters
+
+  vgg_emnist_letters:
+    model: vgg16
+    dataset: emnist_letters
+
+do:
+  - resnet_emnist_letters
+  - vgg_emnist_letters
+
+checkpoints_dir: /media/solis/DATA/Santripta/Training_better/checkpoints/
+save_dir: /media/santripta/data2/inference_emnist_letters/landscape_data_emnist_letters/
+device: cuda:0

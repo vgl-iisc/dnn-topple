@@ -103,32 +103,37 @@ def make_optimizer(model, cfg):
 
 	return torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=decay)
 
-def train_epoch(model, loader, criterion, optimizer, device, epoch, writer=None, collect_outputs=False):
+def train_epoch(model, loader, criterion, optimizer, device, epoch, writer=None, collect_outputs=False, criterion_collect=None):
 	model.train()
 	running_loss = 0.0
 	correct = 0
 	total = 0
 	
+	assert not (collect_outputs and criterion_collect is None), "criterion_collect must be provided if collect_outputs is True"
+
 	# Optional collection for inference
 	collected_losses = [] if collect_outputs else None
 	collected_labels = [] if collect_outputs else None
 	collected_preds = [] if collect_outputs else None
-	collected_indices = [] if collect_outputs else None
+	collected_perm_indices = [] if collect_outputs else None
 	
 	for step, batch in tqdm(enumerate(loader), total=len(loader), desc=f'Epoch {epoch}'):
 		if isinstance(batch, dict):
 			images = batch['image']
 			labels = batch['label']
-			idxs = batch.get('index', None)
+			perm_idxs = batch.get('perm_index', None)
 		else:
 			images, labels = batch
-			idxs = None
+			perm_idxs = None
 		
 		images = images.to(device)
 		labels = labels.to(device)
 
 		outputs = model(images)
 		loss = criterion(outputs, labels)
+		if collect_outputs:
+			with torch.no_grad():
+				loss_collect = criterion_collect(outputs, labels)
 
 		optimizer.zero_grad()
 		loss.backward()
@@ -143,11 +148,11 @@ def train_epoch(model, loader, criterion, optimizer, device, epoch, writer=None,
 			writer.add_scalar('train/batch_loss', loss.item(), epoch * len(loader) + step)
 		
 		if collect_outputs:
-			collected_losses.append(loss.detach())
+			collected_losses.append(loss_collect.detach())
 			collected_labels.append(labels.detach())
 			collected_preds.append(preds.detach())
-			if idxs is not None:
-				collected_indices.append(idxs.to(dtype=torch.uint64))
+			if perm_idxs is not None:
+				collected_perm_indices.append(perm_idxs.to(dtype=torch.uint64))
 
 	epoch_loss = running_loss / total
 	epoch_acc = correct / total
@@ -157,55 +162,62 @@ def train_epoch(model, loader, criterion, optimizer, device, epoch, writer=None,
 			'losses': collected_losses,
 			'labels': collected_labels,
 			'predicted': collected_preds,
-			'indices': collected_indices if collected_indices else None
+			'perm_indices': collected_perm_indices if collected_perm_indices else None
 		}
 	return epoch_loss, epoch_acc
 
 
-def validate(model, loader, criterion, device, collect_outputs=False):
+def validate(model, loader, criterion, device, collect_outputs=False, criterion_collect=None):
 	model.eval()
 	running_loss = 0.0
 	correct = 0
 	total = 0
+
+	assert not (collect_outputs and criterion_collect is None), "criterion_collect must be provided if collect_outputs is True"
 	
 	# Optional collection for inference
 	collected_losses = [] if collect_outputs else None
 	collected_labels = [] if collect_outputs else None
 	collected_preds = [] if collect_outputs else None
-	collected_indices = [] if collect_outputs else None
+	collected_perm_indices = [] if collect_outputs else None
 	
 	with torch.no_grad():
 		for batch in tqdm(loader, total=len(loader), desc='Validation'):
 			if isinstance(batch, dict):
 				images = batch['image']
 				labels = batch['label']
-				idxs = batch.get('index', None)
+				perm_idxs = batch.get('perm_index', None)
 			else:
 				images, labels = batch
-				idxs = None
+				perm_idxs = None
 			
 			images = images.to(device)
 			labels = labels.to(device)
 			outputs = model(images)
 			loss = criterion(outputs, labels)
+
+			if collect_outputs:
+				with torch.no_grad():
+					loss_collect = criterion_collect(outputs, labels)
+
 			running_loss += loss.item() * images.size(0)
 			_, preds = torch.max(outputs, 1)
 			correct += (preds == labels).sum().item()
 			total += labels.size(0)
 			
 			if collect_outputs:
-				collected_losses.append(loss.detach())
+				collected_losses.append(loss_collect.detach())
 				collected_labels.append(labels.detach())
 				collected_preds.append(preds.detach())
-				if idxs is not None:
-					collected_indices.append(idxs.to(dtype=torch.uint64))
+				if perm_idxs is not None:
+					collected_perm_indices.append(perm_idxs.to(dtype=torch.uint64))
 	
 	if collect_outputs:
 		return running_loss / total, correct / total, {
 			'losses': collected_losses,
 			'labels': collected_labels,
 			'predicted': collected_preds,
-			'indices': collected_indices if collected_indices else None
+			'perm_indices': collected_perm_indices if collected_perm_indices else None
 		}
 	return running_loss / total, correct / total
 
@@ -221,7 +233,7 @@ def save_inference_outputs(epoch, train_outputs, val_outputs, train_activations,
 	logger.info(f'Saving inference outputs for epoch {epoch}...')
 	
 	# Create output directory for this epoch
-	epoch_output_dir = os.path.join(output_root, f'epoch_{epoch}')
+	epoch_output_dir = os.path.join(output_root)
 	os.makedirs(epoch_output_dir, exist_ok=True)
 	
 	import numpy as np
@@ -236,22 +248,73 @@ def save_inference_outputs(epoch, train_outputs, val_outputs, train_activations,
 		os.makedirs(preds_dir, exist_ok=True)
 		os.makedirs(tens_dir, exist_ok=True)
 		
-		collected_losses = torch.cat(output['losses']).detach().cpu().numpy().reshape(-1, 1).squeeze()
-		collected_preds = torch.cat(output['predicted']).detach().cpu().numpy().reshape(-1, 1).squeeze()
+		# Concatenate all collected outputs
+		collected_losses = torch.cat(output['losses']).detach().cpu()
+		collected_preds = torch.cat(output['predicted']).detach().cpu()
+		collected_perm_indices = output.get('perm_indices', None)
 		
-		for tag, activations in collected_activations.items():
-			stacked = torch.cat(activations).detach().cpu()
-			collated = stacked.reshape(len(stacked), -1)
-			torch.save(collated, os.path.join(tens_dir, f"a{tag}_e{epoch}.pt"))
+		# If perm_indices are available, rearrange outputs to match the permutation order
+		# The perm_indices tell us the dataset/permutation index (ds[0], ds[1], ds[2], ...)
+		# We need to reorder from shuffled collection order back to permutation order
+		if collected_perm_indices is not None and len(collected_perm_indices) > 0:
+			collected_perm_indices = torch.cat(collected_perm_indices).cpu()
+			
+			# Create arrays to hold reordered data
+			n_samples = len(collected_indices)
+			reordered_losses = torch.zeros_like(collected_losses)
+			reordered_preds = torch.zeros_like(collected_preds)
+			
+			# Reorder: put each sample at its permutation position
+			# If collected in shuffled order [2, 0, 3, 1], rearrange to [0, 1, 2, 3]
+			for i, perm_idx in enumerate(collected_perm_indices):
+				reordered_losses[perm_idx] = collected_losses[i]
+				reordered_preds[perm_idx] = collected_preds[i]
+			
+			collected_losses = reordered_losses
+			collected_preds = reordered_preds
+			
+			# Reorder activations as well
+			for tag, activations in collected_activations.items():
+				stacked = torch.cat(activations).detach().cpu()
+				collated = stacked.reshape(len(stacked), -1)
+				
+				# Reorder activations to permutation order
+				reordered_activations = torch.zeros_like(collated)
+				for i, perm_idx in enumerate(collected_perm_indices):
+					reordered_activations[perm_idx] = collated[i]
+				
+				torch.save(reordered_activations, os.path.join(tens_dir, f"a{tag}_e{epoch}.pt"))
+		else:
+			# No reordering needed - save activations as is
+			for tag, activations in collected_activations.items():
+				stacked = torch.cat(activations).detach().cpu()
+				collated = stacked.reshape(len(stacked), -1)
+				torch.save(collated, os.path.join(tens_dir, f"a{tag}_e{epoch}.pt"))
 		
-		np.savetxt(os.path.join(loss_dir, f"losses_e{epoch}.txt"), collected_losses)
-		np.savetxt(os.path.join(preds_dir, f"predictions_e{epoch}.txt"), collected_preds, fmt='%d')
+		# Convert to numpy for saving
+		collected_losses_np = collected_losses.numpy().reshape(-1, 1).squeeze()
+		collected_preds_np = collected_preds.numpy().reshape(-1, 1).squeeze()
+		
+		np.savetxt(os.path.join(loss_dir, f"losses_e{epoch}.txt"), collected_losses_np)
+		np.savetxt(os.path.join(preds_dir, f"predictions_e{epoch}.txt"), collected_preds_np, fmt='%d')
 	
 	write_output("train", train_outputs, train_activations)
 	write_output("val", val_outputs, val_activations)
 	
-	# Combine train+val
-	combined_outputs = {key: train_outputs[key] + val_outputs[key] for key in train_outputs}
+	# Combine train+val - need to adjust perm_indices for val to account for train dataset size
+	combined_outputs = {}
+	for key in ['losses', 'labels', 'predicted']:
+		combined_outputs[key] = train_outputs[key] + val_outputs[key]
+	
+	# For perm_indices, we need to offset val indices by train dataset size
+	if train_outputs.get('perm_indices') is not None and val_outputs.get('perm_indices') is not None:
+		train_size = torch.cat(train_outputs['losses']).shape[0]
+		# Offset val perm_indices
+		val_perm_indices_offset = [idx + train_size for idx in val_outputs['perm_indices']]
+		combined_outputs['perm_indices'] = train_outputs['perm_indices'] + val_perm_indices_offset
+	else:
+		combined_outputs['perm_indices'] = None
+	
 	combined_activations = {tag: train_activations[tag] + val_activations[tag] for tag in train_activations}
 	write_output("trainUval", combined_outputs, combined_activations)
 	
@@ -266,7 +329,7 @@ def do_run(cfg, device, tboard_base, checkpoints_base, only_last_best=False, inf
 	model = build_model(cfg, num_classes, device)
 
 	# Use reduction='none' if collecting inference outputs, otherwise use default 'mean'
-	criterion = nn.CrossEntropyLoss(reduction='none' if inference_cfg else 'mean')
+	criterion = nn.CrossEntropyLoss()
 	optimizer = make_optimizer(model, cfg)
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
 
@@ -291,12 +354,14 @@ def do_run(cfg, device, tboard_base, checkpoints_base, only_last_best=False, inf
 		logger.info(f'--- Epoch {epoch}/{epochs} ---')
 		
 		# Determine if we should collect inference outputs this epoch
+		logger.info(f"Inference CFG: {inference_cfg}")
+
 		should_collect_inference = False
 		if inference_cfg is not None:
 			inference_schedule = inference_cfg.get('schedule', 'all')
-			if inference_schedule == 'all':
+			if 'all' in inference_schedule:
 				should_collect_inference = True
-			elif inference_schedule == 'last' and epoch == epochs:
+			elif "last" in inference_schedule and epoch == epochs:
 				should_collect_inference = True
 			elif isinstance(inference_schedule, list) and len(inference_schedule) == 3:
 				# Format: [start, end, step] - check if (epoch-1) is in this range
@@ -307,6 +372,8 @@ def do_run(cfg, device, tboard_base, checkpoints_base, only_last_best=False, inf
 			elif isinstance(inference_schedule, int):
 				# Format: interval - every N epochs
 				should_collect_inference = ((epoch - 1) % inference_schedule == 0)
+
+		logger.info(f'Collecting inference outputs this epoch: {should_collect_inference}')
 		
 		# Attach hooks if collecting inference outputs
 		train_hooks = []
@@ -315,12 +382,14 @@ def do_run(cfg, device, tboard_base, checkpoints_base, only_last_best=False, inf
 		val_activations = {}
 		
 		if should_collect_inference:
-			model_arch = inference_cfg['model']
-			collection = inference_cfg.get('collect', {}).get(model_arch, [])
+			collection = inference_cfg.get('collect', {})
 			train_hooks = run_inference.attach_collection_hooks(model, collection, train_activations)
 		
+
+		criterion_collect = nn.CrossEntropyLoss(reduction='none') if should_collect_inference else None
 		# Training pass (with optional collection)
-		train_result = train_epoch(model, train_loader, criterion, optimizer, device, epoch, writer, collect_outputs=should_collect_inference)
+		train_result = train_epoch(model, train_loader, criterion, optimizer, device, epoch, writer, 
+							 collect_outputs=should_collect_inference, criterion_collect=criterion_collect)
 		if should_collect_inference:
 			train_loss, train_acc, train_outputs = train_result
 		else:
@@ -336,7 +405,8 @@ def do_run(cfg, device, tboard_base, checkpoints_base, only_last_best=False, inf
 		logger.info('Evaluating on validation set...')
 		
 		# Validation pass (with optional collection)
-		val_result = validate(model, test_loader, criterion, device, collect_outputs=should_collect_inference)
+		val_result = validate(model, test_loader, criterion, device, 
+						collect_outputs=should_collect_inference, criterion_collect=criterion_collect)
 		if should_collect_inference:
 			val_loss, val_acc, val_outputs = val_result
 		else:

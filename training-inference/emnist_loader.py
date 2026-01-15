@@ -124,15 +124,16 @@ class EmnistDataset(Dataset):
         return int(self.labels.shape[0])
 
     def __getitem__(self, idx: int):
-        idx = int(self.perm[idx].item())
+        perm_idx = idx  # Store the permutation/dataset index
+        idx = int(self.perm[idx].item())  # Get underlying data index
         img = np.repeat(self.images[idx][:, :, np.newaxis], repeats=3, axis=2)
 
         tensor_img = self.transform(img)
 
-        label = int(self.labels[idx])
+        label = int(self.labels[idx]) - 1  # EMNIST letters are labeled 1-26
         tensor_label = torch.tensor(label, dtype=torch.long)
         # return dict so caller can map back to original (shuffled) index
-        return {"image": tensor_img, "label": tensor_label, "index": idx}
+        return {"image": tensor_img, "label": tensor_label, "index": idx, "perm_index": perm_idx}
 
 
 def make_emnist_dataloaders(

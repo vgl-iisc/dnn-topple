@@ -1,0 +1,13 @@
+datasets: 
+  emnist_letters: ./datasets/emnist_letters/data
+
+do:
+  - vgg_emnist_letters
+  - resnet_emnist_letters
+
+config:
+  tensorboard_dir: /media/solis/DATA/Santripta/training_emnist_letters/tensorboard
+  checkpoint_dir: /media/solis/DATA/Santripta/training_emnist_letters/checkpoints
+  experiments_dir: ./training-inference/train_runs_emnist_letters
+  device: cuda:0
+  only_last_best: true

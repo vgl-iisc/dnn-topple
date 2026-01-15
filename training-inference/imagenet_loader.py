@@ -93,8 +93,8 @@ class ImageNetDataset(Dataset):
         return int(self.labels.shape[0])
 
     def __getitem__(self, idx: int):
-        original_idx = idx
-        idx = int(self.perm[idx].item())
+        perm_idx = idx  # Store the permutation/dataset index
+        idx = int(self.perm[idx].item())  # Get underlying data index
         img, imglabel = self.dataset[idx]  # ImageNet returns (PIL Image, label)
 
         tensor_img = self.transform(img)
@@ -104,7 +104,7 @@ class ImageNetDataset(Dataset):
         # assert label == imglabel, f"Label mismatch at index {idx}: {label} vs {imglabel}"
         tensor_label = torch.tensor(label, dtype=torch.long)
         # return a dict so original (shuffled) index can be retrieved for mapping
-        return {"image": tensor_img, "label": tensor_label, "index": original_idx}
+        return {"image": tensor_img, "label": tensor_label, "index": idx, "perm_index": perm_idx}
 
 
 def make_imagenet_dataloaders(

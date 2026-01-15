@@ -256,6 +256,8 @@ def do_run(dataset, data_root, arch, checkpoints_dir, collection, epochs, output
 
 		if epoch == 0:
 			ckpt = None
+		elif epoch == best_epoch:
+			ckpt = os.path.join(checkpoints_dir, f"best_e{epoch}.pt")
 		else:
 			ckpt = os.path.join(checkpoints_dir, f"checkpoint_e{epoch}.pt")
    
