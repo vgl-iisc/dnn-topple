@@ -60,8 +60,7 @@ TYPE_STRING = {
 
 def get_class_coverage(exp: LossLandscapeExperiment, count: int, class_idx: int) -> float:
     ds = exp.dataset
-    total = ds.class_size_by_split[exp.split][ds.classes[class_idx]]
-    
+    total = ds.class_size_by_split[exp.split][ds.classes[int(class_idx)]]
     return round(count / total if total > 0 else 0.0, 4)
 
 class RichFeature:

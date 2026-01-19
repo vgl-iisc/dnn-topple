@@ -92,6 +92,30 @@ def float_input(key: str, label: str, default: float, min_value = None, max_valu
 
 def render_experiment(id: int, half_width: bool):
 
+    @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__})
+    def valley_vs_thresh_data(exp: LossLandscapeExperiment, tol: float) -> tuple[list[float], list[int]]:
+        paths = exp.get_paths(st.session_state.landscapes_dir, st.session_state.ct_dir)
+        
+        thresh, num_min = get_valley_vs_thresh(paths["ctree"])
+        # steady_thresh, steady_minima = find_steady_simplification_states(thresh, num_min, tol)
+
+        return thresh, num_min
+
+    @st.fragment
+    def valley_simpl_chart(exp: LossLandscapeExperiment):
+        threshs, num_min = valley_vs_thresh_data(exp, 0.0)
+                    
+        data = pd.DataFrame({"Simplification Threshold": threshs, "Number of Minima": num_min}).sort_values(by="Number of Minima", ascending=False)
+
+        interval = alt.selection_interval(encodings=['x'], bind='scales')
+        chart = alt.Chart(data).mark_line(interpolate='step-after').encode(
+            x="Simplification Threshold",
+            y=alt.Y("Number of Minima", scale=alt.Scale(type="log")),
+            tooltip=["Simplification Threshold", "Number of Minima"],
+        ).add_params(interval)
+                
+        st.altair_chart(chart, use_container_width=True)
+
     def remove_experiment():
         st.session_state.exp_ids.remove(id)
         st.rerun(scope="app")
@@ -114,21 +138,7 @@ def render_experiment(id: int, half_width: bool):
     st.session_state[f"selected_experiment_{id}"] = exp
 
     with st.expander("Steady State Finder", expanded=False):
-        threshs, num_min = valley_vs_thresh_data(exp, 0.0)
-                    
-        data = pd.DataFrame({"Simplification Threshold": threshs, "Number of Minima": num_min}).sort_values(by="Number of Minima", ascending=False)
-
-        chart = alt.Chart(data).mark_line(interpolate='step-after').encode(
-            x="Simplification Threshold",
-            y=alt.Y("Number of Minima", scale=alt.Scale(type="log")),
-            tooltip=["Simplification Threshold", "Number of Minima"],
-        )
-        
-        # add a brush to select simplification range
-        brush = alt.selection_interval(encodings=['x'], bind="scales")
-        chart = chart.add_params(brush)
-        
-        st.altair_chart(chart, use_container_width=True)
+        valley_simpl_chart(exp)
         
     simpl_key = f"simpl_thresh_{id}"
 
@@ -157,15 +167,6 @@ def render_experiment(id: int, half_width: bool):
             render_coverage_map(id)
             
     main_body()
-
-@st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__})
-def valley_vs_thresh_data(exp: LossLandscapeExperiment, tol: float) -> tuple[list[float], list[int]]:
-    paths = exp.get_paths(st.session_state.landscapes_dir, st.session_state.ct_dir)
-    
-    thresh, num_min = get_valley_vs_thresh(paths["ctree"])
-    # steady_thresh, steady_minima = find_steady_simplification_states(thresh, num_min, tol)
-
-    return thresh, num_min
 
 def main():
     if len(argv) < 4:
@@ -198,8 +199,7 @@ def main():
         st.session_state.state_setup_done = True
         st.session_state.selected_experiments = []
         
-        print(f"Found {len(datasets)} datasets and {len(experiments)} experiments")
-        print("\n".join([repr(exp) for exp in experiments]))
+        print(f"Found {len(datasets)} datasets and {len(experiments)} functions")
 
     st.title("TOPPLE: Topology-powered Latent-space Exploration")
     st.divider()

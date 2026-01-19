@@ -10,9 +10,8 @@ class Dataset:
         self.classes_path = classes_path
         self.splits = splits
         
-        self.size_by_split = {split: 0 for split in splits}
-                
-        self.classes = pd.read_csv(classes_path, header=None)[0].tolist()
+        self.size_by_split = {split: 0 for split in splits}  
+        self.classes = pd.read_csv(classes_path, header=None).iloc[0].to_list()
             
         self.labels_by_split = {split: [] for split in splits}
         self.class_size_by_split = {split: {clss: 0 for clss in self.classes} for split in splits}
@@ -23,13 +22,23 @@ class Dataset:
             split_df = pd.read_csv(split_path)
             self.size_by_split[split] = len(split_df)
             
+            
+            labels_arr = split_df.iloc[:, -1].to_numpy(dtype=int)
+            adjusted = False
             counts = split_df.iloc[:, -1].value_counts()
-            unique_labels = counts.index
-            self.labels_by_split[split] = sorted(unique_labels.tolist())
+            if 0 not in counts.index:
+                labels_arr -= 1  # Adjust labels to be zero-indexed if necessary (EMNIST case)
+                adjusted = True
+                print(f"Adjusted labels for dataset {self.name}, split {split} to be zero-indexed.")
+            
+            self.labels_by_split[split] = labels_arr.astype(int).tolist()
             max_size = 0
-            for label in unique_labels:
-                self.class_size_by_split[split][self.classes[label]] = counts[label]
-                max_size = max(max_size, counts[label])
+            for label, count in counts.items():
+                lab = int(label)
+                if adjusted:
+                    lab -= 1
+                self.class_size_by_split[split][self.classes[lab]] = count
+                max_size = max(max_size, count)
             self.largest_class_size_by_split[split] = max_size
                     
     def get_split_path(self, split: str) -> str:
@@ -114,13 +123,14 @@ def find_all_datasets(datasets_dir: str) -> dict[str, Dataset]:
                 print(f"Warning: No splits found for dataset {dataset_name}")
                 continue
 
+            print(f"Found dataset: {dataset_name} with splits: {splits}")
             dataset = Dataset(dataset_name, dataset_path, classes_path, splits)
             datasets[dataset_name] = dataset
 
-            for r in ["0.0", "0.05", "0.1", "0.15", "0.2", "0.25", "0.3", "0.35", "0.4", "0.45", "0.5", "0.55", "0.6", "0.65", "0.7", "0.75", "0.8", "0.85", "0.9", "0.95", "1.0"]:
-                random_name = f"{dataset_name}-r{r}"
-                ds = Dataset(random_name, dataset_path, classes_path, splits)
-                datasets[random_name] = ds  # Alias for random splits
+            # for r in ["0.0", "0.05", "0.1", "0.15", "0.2", "0.25", "0.3", "0.35", "0.4", "0.45", "0.5", "0.55", "0.6", "0.65", "0.7", "0.75", "0.8", "0.85", "0.9", "0.95", "1.0"]:
+            #     random_name = f"{dataset_name}-r{r}"
+            #     ds = Dataset(random_name, dataset_path, classes_path, splits)
+            #     datasets[random_name] = ds  # Alias for random splits
 
     return datasets
 
