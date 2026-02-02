@@ -1,7 +1,6 @@
 import os
 from glob import glob
 import pandas as pd
-import sys
 
 class Dataset:
     def __init__(self, name: str, path: str, classes_path: str, splits: list[str]) -> None:
@@ -34,7 +33,7 @@ class Dataset:
             self.labels_by_split[split] = labels_arr.astype(int).tolist()
             max_size = 0
             for label, count in counts.items():
-                lab = int(label)
+                lab = int(label) # type: ignore
                 if adjusted:
                     lab -= 1
                 self.class_size_by_split[split][self.classes[lab]] = count

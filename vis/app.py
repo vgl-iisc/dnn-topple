@@ -24,11 +24,13 @@ from pyinstrument import Profiler
 import pickle
 
 from experiment import Dataset, LossLandscapeExperiment, find_all_datasets, find_all_experiments
-from vis_utils import find_steady_simplification_states, compute_arc_features, compute_feature_map, load_preds, compute_feature_coverage_data
-from components import render_tree_explorer, render_coverage_map, render_experiment_selector
+from basic_utils import get_filtered_cps_vs_thresh, get_order_and_weights, get_tree, get_labels, get_preds, get_partition, compute_arc_features, compute_feature_map, get_valley_vs_thresh
+from coverage_utils import compute_feature_coverage_data
+from tree_explorer import render_tree_explorer
+from coverage_view import render_coverage_map
+from components import render_experiment_selector
 
 path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts')))
-from chart_simplification_valleys import get_valley_vs_thresh
 
 @st.cache_data
 def find_available_experiments():
@@ -38,6 +40,13 @@ def find_available_experiments():
 
 def clear_features(id: int):
     st.session_state[f"feats_{id}"] = None
+
+def load_tree(exp: LossLandscapeExperiment):
+    get_tree(exp)
+    get_preds(exp)
+    get_labels(exp)
+    get_order_and_weights(exp)
+    get_partition(exp)
 
 def compute_arcs_and_coverage(id: int, simpl: float):
     exp = st.session_state.get(f"selected_experiment_{id}", None)
@@ -49,72 +58,57 @@ def compute_arcs_and_coverage(id: int, simpl: float):
         data_dir = st.session_state.landscapes_dir
         ct_dir = st.session_state.ct_dir
         
-        feats, data = compute_arc_features(exp, simpl, data_dir, ct_dir)
+        feats = compute_arc_features(exp, simpl)
         st.session_state[f"feats_{id}"] = feats
-        st.session_state[f"ctdata_{id}"] = data
         
         node2feat = compute_feature_map(exp, feats, data_dir, ct_dir)
         st.session_state[f"node2feat_{id}"] = node2feat
         
-        preds = load_preds(exp, data_dir, ct_dir)
-        st.session_state[f"preds_{id}"] = preds
+        preds = get_preds(exp)
         
         compute_feature_coverage_data(exp, feats, preds)
-        
-# TODO: one idea would be to lift all keys into lambda functions so they are only evaluated when needed, and consistent throughout
-
-def float_input(key: str, label: str, default: float, min_value = None, max_value = None, step = None, help: str = "") -> float:    
-    val = st.text_input(label, value=str(default), key=key, help=help)
-
-    if val is None or val.strip() == "":
-        st.error("Value cannot be empty.")
-        return default
-
-    try:
-        fval = float(val)
-    except ValueError:
-        st.error(f"Value must be a valid number.")
-        return default
-
-    if min_value is not None and fval < min_value:
-        st.error(f"Value must be at least {min_value}.")
-        return default
-
-    if max_value is not None and fval > max_value:
-        st.error(f"Value must be at most {max_value}.")
-        return default
-
-    if step is not None:
-        # snap to nearest step
-        fval = round((fval - (min_value if min_value is not None else 0)) / step) * step + (min_value if min_value is not None else 0)
-
-    return fval
 
 def render_experiment(id: int, half_width: bool):
 
-    @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__})
-    def valley_vs_thresh_data(exp: LossLandscapeExperiment, tol: float) -> tuple[list[float], list[int]]:
-        paths = exp.get_paths(st.session_state.landscapes_dir, st.session_state.ct_dir)
-        
-        thresh, num_min = get_valley_vs_thresh(paths["ctree"])
-        # steady_thresh, steady_minima = find_steady_simplification_states(thresh, num_min, tol)
-
-        return thresh, num_min
-
     @st.fragment
     def valley_simpl_chart(exp: LossLandscapeExperiment):
-        threshs, num_min = valley_vs_thresh_data(exp, 0.0)
-                    
-        data = pd.DataFrame({"Simplification Threshold": threshs, "Number of Minima": num_min}).sort_values(by="Number of Minima", ascending=False)
+        use_old = st.checkbox("Use Old Valley Computation", value=False, help="Use the previous method for computing valleys vs simplification thresholds.", key=f"use_old_valley_comp_{id}")
+        
+        if use_old:        
+            threshs, num_min = get_valley_vs_thresh(exp)
+                        
+            data = pd.DataFrame({"Simplification Threshold": threshs, "Number of Minima": num_min}).sort_values(by="Number of Minima", ascending=False)
 
-        interval = alt.selection_interval(encodings=['x'], bind='scales')
-        chart = alt.Chart(data).mark_line(interpolate='step-after').encode(
-            x="Simplification Threshold",
-            y=alt.Y("Number of Minima", scale=alt.Scale(type="log")),
-            tooltip=["Simplification Threshold", "Number of Minima"],
-        ).add_params(interval)
+            interval = alt.selection_interval(encodings=['x'], bind='scales')
+            chart = alt.Chart(data).mark_line(interpolate='step-after').encode(
+                x="Simplification Threshold",
+                y=alt.Y("Number of Minima", scale=alt.Scale(type="log")),
+                tooltip=["Simplification Threshold", "Number of Minima"],
+            ).add_params(interval)
+                    
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            with st.container(horizontal=True, horizontal_alignment="center"):
+                fn_start_min = st.number_input("Function Start Min", value=0.0, key=f"valley_fnstart_min_{id}")
+                fn_start_max = st.number_input("Function Start Max", value=10000.0, key=f"valley_fnstart_max_{id}")
+                fn_end_min = st.number_input("Function End Min", value=0.0, key=f"valley_fnend_min_{id}")
+                fn_end_max = st.number_input("Function End Max", value=10000.0, key=f"valley_fnend_max_{id}")
                 
-        st.altair_chart(chart, use_container_width=True)
+            types = st.multiselect("Arc Types", options=[ct.MINIMUM, ct.SADDLE, ct.MAXIMUM], format_func=lambda t: {ct.MINIMUM: "Minima", ct.SADDLE: "Saddles", ct.MAXIMUM: "Maxima"}[t], default=[ct.MINIMUM], key=f"valley_cp_types_{id}") # type: ignore
+            
+            threshs, counts = get_filtered_cps_vs_thresh(exp, (fn_start_min, fn_start_max), (fn_end_min, fn_end_max), types)
+            
+            data = pd.DataFrame({"Simplification Threshold": threshs, "Count": counts}).sort_values(by="Count", ascending=False)
+
+            interval = alt.selection_interval(encodings=['x'], bind='scales')
+            chart = alt.Chart(data).mark_line(interpolate='step-after').encode(
+                x="Simplification Threshold",
+                y=alt.Y("Count", scale=alt.Scale(type="log")),
+                tooltip=["Simplification Threshold", "Count"],
+            ).add_params(interval)
+                    
+            st.altair_chart(chart, use_container_width=True)
+            
 
     def remove_experiment():
         st.session_state.exp_ids.remove(id)
@@ -135,13 +129,13 @@ def render_experiment(id: int, half_width: bool):
         st.warning("No experiment selected.")
         return
     
+    load_tree(exp)
     st.session_state[f"selected_experiment_{id}"] = exp
 
     with st.expander("Steady State Finder", expanded=False):
         valley_simpl_chart(exp)
-        
+    
     simpl_key = f"simpl_thresh_{id}"
-
     simpl = st.number_input("Simplification Threshold", value=0.0, max_value=500.0, step=0.0001, key=simpl_key, format="%0.32f")
 
     with st.container(horizontal=True, horizontal_alignment="center") as c:

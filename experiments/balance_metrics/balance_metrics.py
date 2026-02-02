@@ -12,7 +12,7 @@ from scripts.get_accuracies import process_file
 from scripts.chart_simplification_valleys import get_valley_vs_thresh
 import scripts.tree_metrics as tm
 import vis.experiment as exp
-import vis.vis_utils as vu
+import vis.basic_utils as vu
 
 from sklearn.linear_model import LinearRegression
 from lmfit.models import ExponentialModel

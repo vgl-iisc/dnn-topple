@@ -7,7 +7,7 @@ from mnist_loader import make_mnist_dataloaders
 from imagenet_loader import make_imagenet_dataloaders
 from emnist_loader import make_emnist_dataloaders
 
-from vis_utils import LossLandscapeExperiment
+from experiment import LossLandscapeExperiment
 
 import numpy as np
 import csv
