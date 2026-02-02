@@ -3,15 +3,15 @@ datasets:
   mnist: ./datasets/mnist/data
 
 do:
-  - vgg_cifar
-  - densenet_cifar
-  - resnet_cifar
-  - wres_cifar
+  - vgg_mnist
+  - densenet_mnist
+  - resnet_mnist
+  - wres_mnist
 
 config:
   tensorboard_dir: /media/solis/DATA/Santripta/Training_random/tensorboard
   checkpoint_dir: /media/solis/DATA/Santripta/Training_random/checkpoints
-  experiments_dir: ./training-inference/train_runs_random
+  experiments_dir: ./training-inference/image_classifiers/train_runs_random
   random: [0.05, 0.0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-  device: cuda
+  device: cuda:1
   only_last_best: true

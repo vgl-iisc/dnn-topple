@@ -4,11 +4,11 @@ datasets:
 do:
   - vgg_imagenet
   - densenet_imagenet
-  - resnet_imagenet
-  - wres_imagenet
+  # - resnet_imagenet
+  # - wres_imagenet
 
 config:
   tensorboard_dir: /media/solis/DATA/Santripta/Training_imagenet/tensorboard
   checkpoint_dir: /media/solis/DATA/Santripta/Training_imagenet/checkpoints
-  experiments_dir: ./training-inference/train_runs_imagenet
+  experiments_dir: ./training-inference/image_classifiers/train_runs_imagenet
   device: cuda

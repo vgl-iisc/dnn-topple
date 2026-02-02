@@ -15,5 +15,5 @@ do:
 config:
   tensorboard_dir: /media/solis/DATA/Santripta/Training_better/tensorboard
   checkpoint_dir: /media/solis/DATA/Santripta/Training_better/checkpoints
-  experiments_dir: ./training-inference/train_runs_better
+  experiments_dir: ./training-inference/image_classifiers/train_runs_better
   device: cuda
