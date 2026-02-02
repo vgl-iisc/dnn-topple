@@ -1,0 +1,33 @@
+datasets:
+  emnist_letters: ./datasets/emnist_letters/data
+
+train:
+  seed: 1770023320
+  model: mnist32
+  dataset: emnist_letters
+
+  batch_size: 128
+  epochs: 200
+  lr: 0.001
+  momentum: 0.9
+  weight_decay: 0.0001
+  schedule: 
+    type: cosineWR
+    T0: 10
+    T_mult: 2
+
+  checkpoints_dir: /media/solis/DATA/Santripta/AETraining/checkpoints/
+  tensorboard_dir: /media/solis/DATA/Santripta/AETraining/tensorboard/
+
+infer:
+  output_dir: /media/santripta/data2/AEInference/landscape_data
+
+  collect:
+    - path: decoder.fc
+      tag: latents
+
+  epochs:
+    - all
+
+name: emnist_letters
+device: cuda:1

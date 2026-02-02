@@ -1,0 +1,33 @@
+datasets:
+  cifar: ./datasets/cifar/data
+
+train:
+  seed: 1770023014
+  model: cifar32
+  dataset: cifar
+
+  batch_size: 128
+  epochs: 200
+  lr: 0.001
+  momentum: 0.9
+  weight_decay: 0.0001
+  schedule: 
+    type: cosineWR
+    T0: 10
+    T_mult: 2
+
+  checkpoints_dir: /media/solis/DATA/Santripta/AETraining/checkpoints/
+  tensorboard_dir: /media/solis/DATA/Santripta/AETraining/tensorboard/
+
+infer:
+  output_dir: /media/santripta/data2/AEInference/landscape_data
+
+  collect:
+    - path: decoder.fc
+      tag: latents
+
+  epochs:
+    - all
+
+name: cifar
+device: cuda:0
