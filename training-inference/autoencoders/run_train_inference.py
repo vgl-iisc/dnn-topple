@@ -110,10 +110,10 @@ def attach_collection_hooks(model, collection, collected_activations):
 
 def make_optimizer(model, cfg):
 	lr = cfg["lr"]
-	momentum = cfg["momentum"]
+	betas = cfg.get("betas", (0.9, 0.999))
 	decay = cfg.get("weight_decay", 0.0)
 
-	return torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=decay)
+	return torch.optim.Adam(model.parameters(), lr=lr, betas=betas, weight_decay=decay)
 
 def make_lr_scheduler(optimizer, cfg):
 	schedule_cfg = cfg.get('schedule', {})
@@ -297,8 +297,8 @@ def do_run(cfg, device, tboard_base, checkpoints_base, inference_cfg, only_last_
 
 	model = build_model(cfg, device)
 
-	criterion = nn.MSELoss()
-	criterion_collect = nn.MSELoss(reduction='none')
+	criterion = nn.BCELoss()
+	criterion_collect = nn.BCELoss(reduction='none')
 	optimizer = make_optimizer(model, cfg)
 	
 	scheduler = make_lr_scheduler(optimizer, cfg)

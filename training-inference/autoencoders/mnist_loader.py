@@ -63,7 +63,6 @@ def get_mnist_transforms() -> Tuple[object, object]:
         T.ToTensor(),
         T.Pad(2),
         T.Normalize((0.1307,), (0.3081,)),
-        T.RandomHorizontalFlip(),
     ])
     test_transform = T.Compose([
         T.ToTensor(),

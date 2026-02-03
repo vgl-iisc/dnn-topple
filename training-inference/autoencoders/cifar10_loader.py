@@ -39,8 +39,6 @@ def get_cifar10_transforms(image_size: int = 32) -> Tuple[object, object]:
     train_transform = T.Compose([
         T.ToTensor(),
         T.Normalize(CIFAR10_MEAN, CIFAR10_STD),
-        T.RandomCrop(32, padding=4),
-        T.RandomHorizontalFlip(),
     ])
 
     test_transform = T.Compose([
