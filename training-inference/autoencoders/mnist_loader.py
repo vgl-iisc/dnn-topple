@@ -62,12 +62,12 @@ def get_mnist_transforms() -> Tuple[object, object]:
     train_transform = T.Compose([
         T.ToTensor(),
         T.Pad(2),
-        T.Normalize((0.1307,), (0.3081,)),
+        # T.Normalize((0.1307,), (0.3081,)),
     ])
     test_transform = T.Compose([
         T.ToTensor(),
         T.Pad(2),
-        T.Normalize((0.1307,), (0.3081,)),
+        # T.Normalize((0.1307,), (0.3081,)),
     ])
     return train_transform, test_transform
 

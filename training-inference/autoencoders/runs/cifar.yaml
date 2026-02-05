@@ -6,7 +6,7 @@ train:
   model: cifar32
   dataset: cifar
 
-  batch_size: 128
+  batch_size: 256
   epochs: 200
   lr: 0.001
   betas: [0.9, 0.999]

@@ -30,4 +30,4 @@ infer:
     - all
 
 name: mnist
-device: cuda
+device: cuda:1
