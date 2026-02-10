@@ -1,5 +1,6 @@
 import os
 from glob import glob
+import streamlit as st
 import pandas as pd
 
 class Dataset:
@@ -60,7 +61,7 @@ class LossLandscapeExperiment:
         self.layer_tag = f"{layer}"
         self.pretty_layer = self.layer_tag[1:]
         self.epoch_tag = f"e{epoch}"
-        self.model_data = f"{self.model}_{self.dataset.name}"
+        self.model_data = f"{self.model}_{self.dataset.name}" if not st.session_state.model_eq_dataset else self.dataset.name
         
     def __hash__(self) -> int:
         return hash((self.dataset.name, self.split, self.model, self.k, self.epoch, self.layer))
@@ -86,21 +87,20 @@ class LossLandscapeExperiment:
             if key == "tensors":
                 continue
             
+            if st.session_state.no_preds and (key == "predictions" or key == "compiled_res"):
+                continue
+            
+            paths_should_exist = [path]
+            
             if key == "ctree":
                 paths_should_exist = [f"{path}.{ext}" for ext in ["order.dat", "order.bin", "part.raw", "rg.bin", "rg.dat"]]
 
-                for p in paths_should_exist:
-                    if not os.path.exists(p):
-                        print(f"Path for {key} does not exist: {p}")
-                        return False
+            for p in paths_should_exist:
+                if not os.path.exists(p):
+                    print(f"Path for {key} does not exist: {p}")
                     
-                continue
-
-            if not os.path.exists(path):
-                print(f"Path for {key} does not exist: {path}")
-                
-                if key != "compiled_res":  # compiled results is not critical
-                    return False
+                    if key != "compiled_res":  # compiled results is not critical
+                        return False
             
         return True
     
@@ -150,9 +150,14 @@ def find_all_experiments(datasets: dict[str, Dataset], data_dir: str, ct_dir: st
         assert len(parts) == 2
 
         model_data, split = parts
-        parts = model_data.split("_")
-        model = parts[0]
-        dataset_name = "_".join(parts[1:])
+
+        if st.session_state.model_eq_dataset:
+           model = model_data
+           dataset_name = model_data            
+        else:
+            parts = model_data.split("_")
+            model = parts[0]
+            dataset_name = "_".join(parts[1:])
         
         print(f"Model: {model}, Dataset: {dataset_name}, Split: {split}")
 

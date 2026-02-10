@@ -1,7 +1,7 @@
-from basic_utils import RichFeature
 from experiment import LossLandscapeExperiment
 from coverage_utils import get_class_coverage
 from graph_utils import compute_tree_graph
+from feature import get_type_string
 
 import pyct as ct
 import streamlit as st
@@ -39,8 +39,8 @@ def render_tree_explorer(id: int):
     
     exp = st.session_state.get(f"selected_experiment_{id}", None)
     
-    @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x)) if x and isinstance(x[0], RichFeature) else hash(tuple(x))})
-    def arc_explorer_plot(exp: LossLandscapeExperiment, features: list[RichFeature], axis_type: str | list[str]) -> alt.Chart:
+    @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x)) if x and isinstance(x[0], ct.RichFeature) else hash(tuple(x))})
+    def arc_explorer_plot(exp: LossLandscapeExperiment, features: list[ct.RichFeature], axis_type: str | list[str]) -> alt.Chart:
         
         max_pers = max([f.pers for f in features]) if len(features) > 0 else 1.0
         
@@ -48,11 +48,12 @@ def render_tree_explorer(id: int):
             "id": f.id,
             "fstart": f.fn_frm,
             "fend": f.fn_to if f.pers > max_pers / 50 else f.fn_frm + max_pers / 50,
-            "ftype": f.type_string,
+            "ftype": get_type_string(f),
             "pers": f.pers,
             "volume": f.size,
             "logvol": np.log1p(f.size),
             "majority class": exp.dataset.classes[f.majority_class],
+            "homogeneity": f.homogeneity,
             "major class size": f.major_class_size,
             "major class coverage": get_class_coverage(exp, f.major_class_size, f.majority_class)
         } for i, f in enumerate(features)])
@@ -88,7 +89,7 @@ def render_tree_explorer(id: int):
             y=alt.Y('fstart'+":Q", title="Loss Start"),
             y2=alt.Y2('fend'+":Q", title="Loss End"),
             tooltip=[alt.Tooltip('id', title="Feature ID"), alt.Tooltip('fstart', title="Loss Start"), alt.Tooltip('fend', title="Loss End"), 
-                     alt.Tooltip('ftype', title="Feature Type"), alt.Tooltip('pers', title="Persistence"), alt.Tooltip('volume', title="Volume"),
+                     alt.Tooltip('ftype', title="Feature Type"), alt.Tooltip('pers', title="Persistence"), alt.Tooltip('volume', title="Volume"), alt.Tooltip('homogeneity', title="Homogeneity"),
                      alt.Tooltip('majority class', title="Majority Class"), alt.Tooltip('major class size', title="Major Class Size"), alt.Tooltip('major class coverage', title="Majority Class Coverage")],
             opacity=alt.condition(brush, alt.value(1), alt.value(0.2)),
             color=alt.Color('logvol', scale=alt.Scale(scheme='yelloworangered')).title(None).legend(None),
@@ -112,16 +113,22 @@ def render_tree_explorer(id: int):
             filter_low_vol = st.number_input("Minimum Volume", min_value=0, value=0, step=1, key=f"min_volume_input_{id}")
             filter_high_vol = st.number_input("Maximum Volume", min_value=0, value=1_000_000_000, step=1, key=f"max_volume_input_{id}")
             
-            filter_low_loss_start = st.number_input("Minimum Loss Start", min_value=0.0, value=0.0, step=0.001, key=f"min_loss_start_input_{id}")
-            filter_high_loss_start = st.number_input("Maximum Loss Start", max_value=1e12, value=1e12, step=0.001, key=f"max_loss_start_input_{id}")
+            # filter_low_loss_start = st.number_input("Minimum Loss Start", min_value=0.0, value=0.0, step=0.001, key=f"min_loss_start_input_{id}")
+            # filter_high_loss_start = st.number_input("Maximum Loss Start", max_value=1e12, value=1e12, step=0.001, key=f"max_loss_start_input_{id}")
             
-            filter_low_loss_end = st.number_input("Minimum Loss End", min_value=0.0, value=0.0, step=0.001, key=f"min_loss_end_input_{id}")
-            filter_high_loss_end = st.number_input("Maximum Loss End", max_value=1e12, value=1e12, step=0.001, key=f"max_loss_end_input_{id}")
+            # filter_low_loss_end = st.number_input("Minimum Loss End", min_value=0.0, value=0.0, step=0.001, key=f"min_loss_end_input_{id}")
+            # filter_high_loss_end = st.number_input("Maximum Loss End", max_value=1e12, value=1e12, step=0.001, key=f"max_loss_end_input_{id}")
+            
+            filter_low_loss_interval = st.number_input("Minimum Loss Interval", min_value=0.0, value=0.0, step=0.001, key=f"min_loss_interval_input_{id}")
+            filter_high_loss_interval = st.number_input("Maximum Loss Interval", max_value=1e12, value=1e12, step=0.001, key=f"max_loss_interval_input_{id}")
+            
+            filter_low_homo = st.number_input("Minimum Homogeneity", min_value=0.0, max_value=1.0, value=0.0, step=0.001, key=f"min_homogeneity_input_{id}")
+            filter_high_homo = st.number_input("Maximum Homogeneity", min_value=0.0, max_value=1.0, value=1.0, step=0.001, key=f"max_homogeneity_input_{id}")
         
         filtered_features = [f for f in features if f.size >= filter_low_vol and f.size <= filter_high_vol]
-        filtered_features = [f for f in filtered_features if f.fn_frm >= filter_low_loss_start and f.fn_frm <= filter_high_loss_start]
-        filtered_features = [f for f in filtered_features if f.fn_to >= filter_low_loss_end and f.fn_to <= filter_high_loss_end]
+        filtered_features = [f for f in filtered_features if f.fn_frm >= filter_low_loss_interval and f.fn_frm <= filter_high_loss_interval]
         filtered_features = [f for f in filtered_features if (f.type_frm, f.type_to) in allowed_types]
+        filtered_features = [f for f in filtered_features if f.homogeneity >= filter_low_homo and f.homogeneity <= filter_high_homo]
         st.session_state[f"filtered_feats_{id}"] = filtered_features
         
         if len(filtered_features) == 0:
@@ -168,13 +175,20 @@ def render_tree_explorer(id: int):
             st.warning("No features of the selected types.")
             return
 
-        if st.button("Recompute Tree Graph", key=f"recompute_tree_graph_{id}"):
-            st.session_state[f"tree_graph_{id}"] = compute_tree_graph(exp, valid_features, steiner_mode, ego_origin, ego_radius, saddle_simpl)
+        with st.container(horizontal=True, horizontal_alignment="left", vertical_alignment="center"):
+            if st.button("Recompute Tree Graph", key=f"recompute_tree_graph_{id}"):
+                st.session_state[f"tree_graph_{id}"] = compute_tree_graph(exp, valid_features, steiner_mode, ego_origin, ego_radius, saddle_simpl)
+            
+            display_tree = st.checkbox("Display Tree Graph", key=f"display_tree_checkbox_{id}", value=False)
 
         gnx = st.session_state.get(f"tree_graph_{id}", None)
 
         if gnx is None:
             st.text("Compute tree graph to begin.")
+            return
+
+        if not display_tree:
+            st.text(f"Tree graph computed with {len(gnx.nodes)} nodes and {len(gnx.edges)} edges. Connected: {nx.is_connected(gnx.to_undirected())}. Not displayed.")
             return
 
         st.text(f"{len(valid_features)} features selected. Rendering {len(gnx.edges)} features after processing. Connected: {nx.is_connected(gnx.to_undirected())}")
@@ -188,7 +202,7 @@ def render_tree_explorer(id: int):
         components.html(html, height=600)
         # st.write(imbalance_metrics)
         
-    features: list[RichFeature] | None = st.session_state.get(f"feats_{id}", None)
+    features: list[ct.RichFeature] | None = st.session_state.get(f"feats_{id}", None)
 
     if features is None:
         st.info("Compute tree and coverage to begin.")

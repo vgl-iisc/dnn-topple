@@ -1,4 +1,4 @@
-from basic_utils import compute_arc_features, compute_feature_map, RichFeature
+from basic_utils import compute_arc_features
 from experiment import LossLandscapeExperiment
 
 import pyct as ct
@@ -14,13 +14,12 @@ CP_COLORING = {
 
 def rooted_tree_from_exp(exp: LossLandscapeExperiment, simpl: float, data_dir: str, ct_dir: str) -> nx.DiGraph:
     features = compute_arc_features(exp, simpl)
-    compute_feature_map(exp, features, data_dir, ct_dir)
     nxg = compute_tree_graph(exp, features, "None", "None", 0)
     
     return nxg
 
 @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x))})
-def compute_tree_graph(exp: LossLandscapeExperiment, features: list[RichFeature], steiner_mode: str, ego_origin: str, ego_radius: int, simplify_saddles: bool = False):
+def compute_tree_graph(exp: LossLandscapeExperiment, features: list[ct.RichFeature], steiner_mode: str, ego_origin: str, ego_radius: int, simplify_saddles: bool = False):
     useful_nodes = set()
     minima_nodes = set()
     maxima_nodes = set()

@@ -21,11 +21,10 @@ import numpy as np
 
 from pyinstrument import Profiler
 
-import pickle
+import argparse as ap
 
 from experiment import Dataset, LossLandscapeExperiment, find_all_datasets, find_all_experiments
-from basic_utils import get_filtered_cps_vs_thresh, get_order_and_weights, get_tree, get_labels, get_preds, get_partition, compute_arc_features, compute_feature_map, get_valley_vs_thresh
-from coverage_utils import compute_feature_coverage_data
+from basic_utils import get_filtered_cps_vs_thresh, get_order_and_weights, get_tree, get_labels, get_preds, get_partition, compute_arc_features, get_valley_vs_thresh
 from tree_explorer import render_tree_explorer
 from coverage_view import render_coverage_map
 from components import render_experiment_selector
@@ -54,20 +53,9 @@ def compute_arcs_and_coverage(id: int, simpl: float):
     st.session_state[f"computed_simpl_{id}"] = simpl
     
     with st.spinner(f"Computing arcs and coverage at simplification {simpl}..."):
-        # All these functions are now cached at (experiment, simplification) level
-        data_dir = st.session_state.landscapes_dir
-        ct_dir = st.session_state.ct_dir
-        
         feats = compute_arc_features(exp, simpl)
-        st.session_state[f"feats_{id}"] = feats
+        st.session_state[f"feats_{id}"] = feats                
         
-        node2feat = compute_feature_map(exp, feats, data_dir, ct_dir)
-        st.session_state[f"node2feat_{id}"] = node2feat
-        
-        preds = get_preds(exp)
-        
-        compute_feature_coverage_data(exp, feats, preds)
-
 def render_experiment(id: int, half_width: bool):
 
     @st.fragment
@@ -94,7 +82,9 @@ def render_experiment(id: int, half_width: bool):
                 fn_end_min = st.number_input("Function End Min", value=0.0, key=f"valley_fnend_min_{id}")
                 fn_end_max = st.number_input("Function End Max", value=10000.0, key=f"valley_fnend_max_{id}")
                 
-            types = st.multiselect("Arc Types", options=[ct.MINIMUM, ct.SADDLE, ct.MAXIMUM], format_func=lambda t: {ct.MINIMUM: "Minima", ct.SADDLE: "Saddles", ct.MAXIMUM: "Maxima"}[t], default=[ct.MINIMUM], key=f"valley_cp_types_{id}") # type: ignore
+            with st.container(horizontal=True, horizontal_alignment="center", vertical_alignment="bottom"):
+                types = st.multiselect("Arc Types", options=[ct.MINIMUM, ct.SADDLE, ct.MAXIMUM], format_func=lambda t: {ct.MINIMUM: "Minima", ct.SADDLE: "Saddles", ct.MAXIMUM: "Maxima"}[t], default=[ct.MINIMUM], key=f"valley_cp_types_{id}") # type: ignore
+                log_scale = st.checkbox("Log Scale", value=True, key=f"valley_log_scale_{id}")
             
             threshs, counts = get_filtered_cps_vs_thresh(exp, (fn_start_min, fn_start_max), (fn_end_min, fn_end_max), types)
             
@@ -103,7 +93,7 @@ def render_experiment(id: int, half_width: bool):
             interval = alt.selection_interval(encodings=['x'], bind='scales')
             chart = alt.Chart(data).mark_line(interpolate='step-after').encode(
                 x="Simplification Threshold",
-                y=alt.Y("Count", scale=alt.Scale(type="log")),
+                y=alt.Y("Count", scale=alt.Scale(type="log" if log_scale else "linear")),
                 tooltip=["Simplification Threshold", "Count"],
             ).add_params(interval)
                     
@@ -163,29 +153,25 @@ def render_experiment(id: int, half_width: bool):
     main_body()
 
 def main():
-    if len(argv) < 4:
-        print("Usage: streamlit run vis/app.py <ct_dir> <landscapes_dir> <datasets_dir>")
-        exit(1)
-        
-    # if len(argv) < 4:
-    #     print("Usage: streamlit run vis/app.py <ct_dir> <landscapes_dir> <datasets_dir> [state_file_to_load]")
-    #     exit(1)
+    parser = ap.ArgumentParser(description="Streamlit app for exploring contour trees and coverage.", prefix_chars="+")
+    parser.add_argument("ct_dir", type=str, help="Directory containing contour tree files.")
+    parser.add_argument("landscapes_dir", type=str, help="Directory containing landscape data files.")
+    parser.add_argument("datasets_dir", type=str, help="Directory containing dataset files.")
+    
+    # streamlit doesn't allow flags, so we use "+flagname" to indicate boolean flags
+    parser.add_argument("+model_eq_dataset", action="store_true", help="Whether to treat model name as equivalent to dataset name when loading experiments.")
+    parser.add_argument("+no_preds", action="store_true", help="Whether to skip loading predictions, which can speed up loading but disable coverage computations.")
 
-    # if len(argv) > 4:
-    #     state_file = argv[4]
-    #     if not os.path.exists(state_file):
-    #         print(f"State file {state_file} does not exist.")
-    #         exit(1)
-    #     with open(state_file, "rb") as f:
-    #         loaded_state = pickle.load(f)
-    #         for k in loaded_state:
-    #             st.session_state[k] = loaded_state[k]
-
+    args = parser.parse_args()
+    
     st.set_page_config(layout="wide")
 
-    st.session_state.ct_dir = argv[1].strip("/\\")
-    st.session_state.landscapes_dir = argv[2].strip("/\\")
-    st.session_state.datasets_dir = argv[3].strip("/\\")
+    st.session_state.ct_dir = args.ct_dir.strip("/\\")
+    st.session_state.landscapes_dir = args.landscapes_dir.strip("/\\")
+    st.session_state.datasets_dir = args.datasets_dir.strip("/\\")
+    
+    st.session_state.model_eq_dataset = args.model_eq_dataset
+    st.session_state.no_preds = args.no_preds
     
     datasets, experiments = find_available_experiments()
 

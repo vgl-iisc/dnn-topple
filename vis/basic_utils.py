@@ -1,13 +1,14 @@
 import streamlit as st
 from experiment import LossLandscapeExperiment
-from feature import RichFeature
-from coverage_utils import get_class_coverage
 
 import numpy as np
 import pyct as ct
 
 @st.cache_resource(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__})
 def get_preds(exp: LossLandscapeExperiment) -> list[int]:
+    if st.session_state.no_preds:
+        return get_labels(exp)
+    
     pred_path = exp.get_paths(data_dir=st.session_state.landscapes_dir, ct_dir=st.session_state.ct_dir)["predictions"]
     
     with open(pred_path, "rb") as f:
@@ -70,75 +71,20 @@ def get_filtered_cps_vs_thresh(exp: LossLandscapeExperiment, fnstart_range, fnen
     return fns, counts
 
 @st.cache_resource(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__})
-def compute_arc_features(exp: LossLandscapeExperiment, simpl: float) -> list[RichFeature]:
-    data, topo = get_tree(exp)
-    features = [RichFeature(id, f, data) for id, f in enumerate(topo.getArcFeatures(-1, simpl)[0])]
+def compute_arc_features(exp: LossLandscapeExperiment, simpl: float):
+    """
+    Computes rich features using the C++ implementation.
+    Returns a list of RichFeature objects with all metadata populated.
+    """
+    _, topo = get_tree(exp)
+    partition = get_partition(exp)
+    labels = get_labels(exp)
+    preds = get_preds(exp)
+    
+    # Get class sizes for computing class coverage
+    class_sizes = [exp.dataset.class_size_by_split[exp.split][cls] for cls in exp.dataset.classes]
+    
+    # Use C++ implementation for fast computation
+    features = ct.computeRichFeatures(topo, -1, simpl, partition, labels, preds, class_sizes) # type: ignore
+    
     return features
-
-def make_arc_map(features: list[RichFeature]):
-    arc_map = {}
-    for feat in features:
-        for arc_id in feat.arcs:
-            assert arc_id not in arc_map, "Arc belongs to multiple features!"
-            arc_map[arc_id] = feat
-    
-    return arc_map
-
-@st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x))})
-def compute_feature_map(exp: LossLandscapeExperiment, features: list[RichFeature], data_dir: str, ct_dir: str) -> list[int]:
-    """
-    Computes a mapping from contour tree node (i.e. an embedded vector for a data point) to the contour tree feature it belongs to and vice versa.
-    Also populates rich data in the feature objects.
-    """
-
-    ctree_path = exp.get_paths(data_dir, ct_dir)["ctree"]
-
-    labels = exp.dataset.labels_by_split[exp.split]
-    count = len(labels)
-    
-    with open(f"{ctree_path}.part.raw", "rb") as f:
-        parts = np.fromfile(f, dtype=np.uint32, count=count)
-        
-    arc_map = make_arc_map(features)
-
-    point2feat = [-1] * count
-    print("FMAP COUNT:", count, len(parts))
-        
-    for i, arc_id in enumerate(parts):
-        assert arc_id in arc_map, "Arc not found in feature map!"
-        
-        # resolved_idx = data.nodeMap[i]
-        resolved_idx = i
-        
-        feat = arc_map[arc_id]
-        point2feat[resolved_idx] = arc_map[arc_id]
-        
-        feat.members.add(resolved_idx)
-        feat.size += 1
-        
-        label = labels[resolved_idx]
-        
-        if label not in feat.class_counts:
-            feat.class_counts[label] = 0
-        feat.class_counts[label] += 1
-        
-
-    for feat in features:
-        if len(feat.class_counts) == 0:
-            feat.majority_class = labels[feat.frm]
-            feat.major_class_size = 0
-            continue
-        
-        feat.majority_class = max(list(feat.class_counts.keys()), key=lambda k: feat.class_counts[k])
-        feat.major_class_size = feat.class_counts[feat.majority_class]
-    
-    # TODO: restore assertions
-    # print("Feature map computed. Matched points:", sum([f.size for f in features]), "Expected:", count)
-    assert len(point2feat) == count, "Point to feature map size mismatch!"
-    assert set.union(*[feat.members for feat in features]) == set(range(count)), "Some nodes are not mapped to any feature!"
-        
-    for feat in features:
-        for i in range(len(exp.dataset.classes)):
-            feat.class_coverage[i] = get_class_coverage(exp, feat.class_counts.get(i, 0), i)
-
-    return point2feat

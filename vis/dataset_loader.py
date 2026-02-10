@@ -1,6 +1,6 @@
 import os
 import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../training-inference')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../training-inference/image_classifiers')))
 
 from cifar10_loader import make_cifar10_dataloaders
 from mnist_loader import make_mnist_dataloaders

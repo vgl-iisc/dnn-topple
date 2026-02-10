@@ -1,7 +1,6 @@
-from pyexpat import features
-from basic_utils import RichFeature, get_preds
+from basic_utils import get_preds
 from coverage_utils import class2color, get_class_coverage
-from graph_utils import compute_tree_graph
+from feature import get_type_string
 from dataset_loader import load_dataset
 
 import pyvis.network as net
@@ -31,13 +30,13 @@ def render_coverage_map(id: int):
     
     exp = st.session_state.get(f"selected_experiment_{id}", None)
     
-    features: list[RichFeature] | None = st.session_state.get(f"feats_{id}", None)
+    features: list[ct.RichFeature] | None = st.session_state.get(f"feats_{id}", None)
     
     if features is None:
         st.info("Compute arcs and coverage to explore coverage map.")
         return
     
-    filtered_features: list[RichFeature] = st.session_state.get(f"filtered_feats_{id}", [])
+    filtered_features: list[ct.RichFeature] = st.session_state.get(f"filtered_feats_{id}", [])
     selection: list[int] = st.session_state.get(f"explorer_selected_arcs_{id}", [])
     ds = load_dataset(exp)
 
@@ -58,8 +57,8 @@ def render_coverage_map(id: int):
 
     @st.fragment
     def f2c_viewer():
-        @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x)) if x and isinstance(x[0], RichFeature) else hash(tuple(x))})
-        def f2c_plot(exp: LossLandscapeExperiment, feats: list[RichFeature], preds: list[int], view: str, show_what: str, freeze_top: bool) -> alt.Chart | None:
+        @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x)) if x and isinstance(x[0], ct.RichFeature) else hash(tuple(x))})
+        def f2c_plot(exp: LossLandscapeExperiment, feats: list[ct.RichFeature], preds: list[int], view: str, show_what: str, freeze_top: bool) -> alt.Chart | None:
             classes = exp.dataset.classes
             colors = {cls: class2color(i) for i, cls in enumerate(classes)}
             node2label = exp.dataset.labels_by_split[exp.split]
@@ -170,7 +169,7 @@ def render_coverage_map(id: int):
             
             entries.append({
                 "ID": f.id,
-                "Type": f.type_string,
+                "Type": get_type_string(f),
                 "Size": f.size,
                 "Share": share,
                 "Coverage": coverage,
@@ -183,7 +182,7 @@ def render_coverage_map(id: int):
             df = pd.DataFrame(entries).sort_values(by=["Coverage", "ID"], ascending=[False, True])
             df["Share"] = df["Share"]
             df["Coverage"] = df["Coverage"]
-            st.dataframe(df, use_container_width=True, key=f"class_to_feature_table_{id}", hide_index=True)
+            st.dataframe(df, width="content", key=f"class_to_feature_table_{id}", hide_index=True)
 
     @st.fragment
     def f2m_viewer():
