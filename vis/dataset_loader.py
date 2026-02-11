@@ -51,7 +51,6 @@ def load_dataset(exp: LossLandscapeExperiment):
 		train_loader, test_loader = make_emnist_dataloaders(root, batch_size=1, variant="letters")
 
 	ds = []
-	print(order)
  
 	for split in order:
 		if split == "train":

@@ -54,7 +54,7 @@ def compute_arcs_and_coverage(id: int, simpl: float):
     
     with st.spinner(f"Computing arcs and coverage at simplification {simpl}..."):
         feats = compute_arc_features(exp, simpl)
-        st.session_state[f"feats_{id}"] = feats                
+        st.session_state[f"feats_{id}"] = feats
         
 def render_experiment(id: int, half_width: bool):
 

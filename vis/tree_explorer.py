@@ -113,22 +113,26 @@ def render_tree_explorer(id: int):
             filter_low_vol = st.number_input("Minimum Volume", min_value=0, value=0, step=1, key=f"min_volume_input_{id}")
             filter_high_vol = st.number_input("Maximum Volume", min_value=0, value=1_000_000_000, step=1, key=f"max_volume_input_{id}")
             
-            # filter_low_loss_start = st.number_input("Minimum Loss Start", min_value=0.0, value=0.0, step=0.001, key=f"min_loss_start_input_{id}")
-            # filter_high_loss_start = st.number_input("Maximum Loss Start", max_value=1e12, value=1e12, step=0.001, key=f"max_loss_start_input_{id}")
-            
-            # filter_low_loss_end = st.number_input("Minimum Loss End", min_value=0.0, value=0.0, step=0.001, key=f"min_loss_end_input_{id}")
-            # filter_high_loss_end = st.number_input("Maximum Loss End", max_value=1e12, value=1e12, step=0.001, key=f"max_loss_end_input_{id}")
-            
             filter_low_loss_interval = st.number_input("Minimum Loss Interval", min_value=0.0, value=0.0, step=0.001, key=f"min_loss_interval_input_{id}")
             filter_high_loss_interval = st.number_input("Maximum Loss Interval", max_value=1e12, value=1e12, step=0.001, key=f"max_loss_interval_input_{id}")
             
             filter_low_homo = st.number_input("Minimum Homogeneity", min_value=0.0, max_value=1.0, value=0.0, step=0.001, key=f"min_homogeneity_input_{id}")
             filter_high_homo = st.number_input("Maximum Homogeneity", min_value=0.0, max_value=1.0, value=1.0, step=0.001, key=f"max_homogeneity_input_{id}")
         
-        filtered_features = [f for f in features if f.size >= filter_low_vol and f.size <= filter_high_vol]
-        filtered_features = [f for f in filtered_features if f.fn_frm >= filter_low_loss_interval and f.fn_frm <= filter_high_loss_interval]
-        filtered_features = [f for f in filtered_features if (f.type_frm, f.type_to) in allowed_types]
-        filtered_features = [f for f in filtered_features if f.homogeneity >= filter_low_homo and f.homogeneity <= filter_high_homo]
+        criteria = ct.FilterCriteria() # type: ignore
+        criteria.min_size = filter_low_vol
+        criteria.max_size = filter_high_vol
+        criteria.min_fn_from = filter_low_loss_interval
+        criteria.max_fn_from = filter_high_loss_interval
+        criteria.min_homogeneity = filter_low_homo
+        criteria.max_homogeneity = filter_high_homo
+        criteria.allowed_types = allowed_types
+        
+        if features is None:
+            return
+        
+        filtered_indices = ct.filterFeatures(features, criteria) # type: ignore
+        filtered_features = [features[i] for i in filtered_indices]
         st.session_state[f"filtered_feats_{id}"] = filtered_features
         
         if len(filtered_features) == 0:
@@ -169,7 +173,10 @@ def render_tree_explorer(id: int):
         valid_features = features
 
         if simpl_mode == "Feature Types":
-            valid_features = [f for f in features if (f.type_frm, f.type_to) in allowed_types]
+            criteria = ct.FilterCriteria() # type: ignore
+            criteria.allowed_types = allowed_types
+            filtered_indices = ct.filterFeatures(features, criteria) # type: ignore
+            valid_features = [features[i] for i in filtered_indices]
 
         if len(valid_features) == 0:
             st.warning("No features of the selected types.")
@@ -207,7 +214,7 @@ def render_tree_explorer(id: int):
     if features is None:
         st.info("Compute tree and coverage to begin.")
         return
-    
+        
     types = st.multiselect("Feature types", options=list(ALLOWED_TYPE_SETS.keys()), default=["valleys"], key=f"feature_type_selector_{id}")
     
     allowed_types = set()

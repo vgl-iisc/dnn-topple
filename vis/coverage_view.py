@@ -35,7 +35,7 @@ def render_coverage_map(id: int):
     if features is None:
         st.info("Compute arcs and coverage to explore coverage map.")
         return
-    
+        
     filtered_features: list[ct.RichFeature] = st.session_state.get(f"filtered_feats_{id}", [])
     selection: list[int] = st.session_state.get(f"explorer_selected_arcs_{id}", [])
     ds = load_dataset(exp)
@@ -43,24 +43,48 @@ def render_coverage_map(id: int):
     if len(selection) == 0:
         selection = [f.id for f in filtered_features]
 
-    focused_feats = st.text_input("Focus Feature IDs (comma-separated)", key=f"add_feat_ids_{id}", value="")        
-    focused_feat_ids = [int(fid.strip()) for fid in focused_feats.split(",") if fid.strip().isdigit()]
+    classes = exp.dataset.classes
+    n_classes = len(classes)
+    many_classes = n_classes > 30
+
+    focused_classes = list(range(n_classes))
+
+    with st.container(horizontal=True, vertical_alignment="center"):
+        focused_feats = st.text_input("Focus Feature IDs (comma-separated)", key=f"add_feat_ids_{id}", value="")        
+        focused_feat_ids = [int(fid.strip()) for fid in focused_feats.split(",") if fid.strip().isdigit()]
+        
+        if many_classes:
+            focused_classes_input = st.text_input("Focus Class Indices (comma-separated, hyphenated)", key=f"add_class_indices_{id}", value="")
+            if focused_classes_input.strip() != "":
+                focused_classes = []
+                for part in focused_classes_input.split(","):
+                    part = part.strip()
+                    if part.isdigit():
+                        focused_classes.append(int(part))
+                    elif '-' in part:
+                        try:
+                            start, end = map(int, part.split('-'))
+                            focused_classes.extend(list(range(start, end + 1)))
+                        except ValueError:
+                            st.warning(f"Invalid range format: '{part}'")
+                    else:
+                        st.warning(f"Invalid class index: '{part}'")
     
     if len(focused_feat_ids) > 0:
         selection = focused_feat_ids
     selection = list(set(selection))
 
-    f2c, acc, c2f, f2m, datex = st.tabs(["Feature to Class", "Accuracy", "Class to Feature", "Feature to Members", "Data Explorer"])
+    f2c, acc, c2f, cc, datex = st.tabs(["Feature to Class", "Accuracy", "Class to Features", "Class Co-Occurrences", "Data Explorer"])
     selected_features = [features[fid] for fid in selection]
     node2feat = st.session_state.get(f"node2feat_{id}", [])
-    classes = exp.dataset.classes
-
+   
     @st.fragment
     def f2c_viewer():
         @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x)) if x and isinstance(x[0], ct.RichFeature) else hash(tuple(x))})
-        def f2c_plot(exp: LossLandscapeExperiment, feats: list[ct.RichFeature], preds: list[int], view: str, show_what: str, freeze_top: bool) -> alt.Chart | None:
-            classes = exp.dataset.classes
-            colors = {cls: class2color(i) for i, cls in enumerate(classes)}
+        def f2c_plot(exp: LossLandscapeExperiment, feats: list[ct.RichFeature], preds: list[int], view: str, show_what: str, freeze_top: bool, focused_classes: list[int]) -> alt.Chart | None:
+            focused_class_set = set(focused_classes)
+            classes = [exp.dataset.classes[i] for i in focused_classes]
+            colors = {exp.dataset.classes[i]: class2color(i) for i in focused_classes}
             node2label = exp.dataset.labels_by_split[exp.split]
         
             if len(feats) == 0:
@@ -68,12 +92,18 @@ def render_coverage_map(id: int):
         
             node_feats = set.union(*[set(zip(f.members, [f] * f.size)) for f in feats])
             
-            max_class_size = max([exp.dataset.class_size_by_split[exp.split][cls] for cls in exp.dataset.classes])
+            max_class_size = max([exp.dataset.class_size_by_split[exp.split][exp.dataset.classes[i]] for i in focused_classes]) if focused_classes else 1
             
             data = []
             for (node, feat) in node_feats:
                 true_label = node2label[node]
+
+                # Filter by focused classes
+                if true_label not in focused_class_set:
+                    continue
+
                 pred_label = preds[node]
+                
                 
                 data.append({
                     "Feature ID": feat.id,
@@ -125,12 +155,12 @@ def render_coverage_map(id: int):
             y = y.scale(scale)
             
             plot = alt.Chart(df).mark_bar().encode(
-                x=alt.X('True Class:N', title="True Class"),
+                x=alt.X('True Class:N', title="True Class", sort=alt.EncodingSortField(field='True Label', order='ascending')),
                 y=y,
                 color=color if color is not None else alt.Color('True Class:N', scale=alt.Scale(domain=list(colors.keys()), range=list(colors.values())), title="True Class"),
-                tooltip=[alt.Tooltip('count', title="Number of Points"), alt.Tooltip('True Class', title="True Class"), 
+                tooltip=[alt.Tooltip('count', title="Number of Points"), alt.Tooltip('True Label', title="Label Index"), alt.Tooltip('True Class', title="True Class"), 
                         alt.Tooltip('Coverage', title="Class Coverage").format('.3%'), alt.Tooltip('Proportion', title="Proportion").format('.3%')] + ([pred_tooltip] if pred_tooltip is not None else []),
-                order=alt.Order('True Class:N', sort='ascending')
+                order=alt.Order('True Label:Q', sort='ascending')
             ).properties(
                 width=600,
                 height=400
@@ -144,7 +174,7 @@ def render_coverage_map(id: int):
             freeze_top = st.checkbox("Freeze top", key=f"freeze_top_{id}", value=True)
         
         preds = get_preds(exp)
-        plot = f2c_plot(exp, selected_features, preds, fine_grained, show_what, freeze_top)
+        plot = f2c_plot(exp, selected_features, preds, fine_grained, show_what, freeze_top, focused_classes)
         
         if plot is None:
             st.warning("No datapoints in selection.")
@@ -152,8 +182,154 @@ def render_coverage_map(id: int):
             st.altair_chart(plot, use_container_width=True, key=f"f2c_plot_{id}")
     
     @st.fragment
-    def c2f_viewer():
-        selected_classes = st.multiselect("Co-Occurrences", options=exp.dataset.classes, default=[], key=f"class_selector_c2f_{id}")
+    def acc_viewer():
+        focused_class_set = set(focused_classes)
+        total_points = 0
+        correct_points = 0
+        preds = get_preds(exp)
+        node2label = exp.dataset.labels_by_split[exp.split]
+        
+        for f in selected_features:
+            for n in f.members:
+                if node2label[n] not in focused_class_set:
+                    continue
+                total_points += 1
+                if preds[n] == node2label[n]:
+                    correct_points += 1
+                    
+        accuracy = correct_points / total_points if total_points > 0 else 0.0
+        
+        st.write(f"Accuracy over selected features: **{accuracy * 100.0:0.3f}%** ({correct_points} / {total_points})")
+        
+        focused_class_names = [exp.dataset.classes[i] for i in focused_classes]
+        confusion = pd.DataFrame(0, index=focused_class_names, columns=focused_class_names)
+        for f in selected_features:
+            for n in f.members:
+                if node2label[n] not in focused_class_set:
+                    continue
+                true_cls = exp.dataset.classes[node2label[n]]
+                pred_cls = exp.dataset.classes[preds[n]]
+                if true_cls in focused_class_names and pred_cls in focused_class_names:
+                    confusion.at[true_cls, pred_cls] += 1 # type: ignore
+                    
+        heat = alt.Chart(confusion.reset_index().melt(id_vars='index')).mark_rect().encode(
+            x=alt.X('variable:N', title="Predicted Class"),
+            y=alt.Y('index:N', title="True Class"),
+            color=alt.Color('value:Q', scale=alt.Scale(scheme='blues', type="symlog"), title="Number of Points"),
+            tooltip=[alt.Tooltip('value:Q', title="Number of Points"), alt.Tooltip('index:N', title="True Class"), alt.Tooltip('variable:N', title="Predicted Class")]
+        ).properties(
+            width=400,
+            height=400
+        )
+        
+        st.altair_chart(heat, use_container_width=True, key=f"confusion_heatmap_{id}")
+
+    @st.fragment
+    def c2f_viewer():   
+        selected_labels = focused_classes
+        
+        sub_view = st.radio(
+            "View",
+            options=["Class to Feature Mappings", "Class to Feature Counts"],
+            horizontal=True,
+            key=f"c2f_subview_{id}"
+        )
+        
+        if sub_view == "Class to Feature Mappings":
+            sort_by = st.selectbox(
+                "Sort by",
+                options=["Coverage", "Proportion"],
+                index=0,
+                key=f"c2f_sortby_{id}"
+            )
+            
+            rows = []
+            for cls in selected_labels:
+                class_name = exp.dataset.classes[cls]
+                for f in selected_features:
+                    cnt = f.class_counts.get(cls, 0)
+                    if cnt <= 0:
+                        continue
+                    proportion = f.class_proportions.get(cls, 0.0)
+                    coverage = f.class_coverage.get(cls, 0.0)
+                    
+                    rows.append({
+                        "Class": class_name,
+                        "Class Index": cls,
+                        "Feature ID": f.id,
+                        "Type": get_type_string(f),
+                        "Size": f.size,
+                        "Count": cnt,
+                        "Proportion": proportion,
+                        "Coverage": coverage
+                    })
+            
+            if len(rows) == 0:
+                st.warning("No features contain the selected class(es).")
+            else:
+                df = pd.DataFrame(rows)
+                df = df.sort_values(by=["Class Index", sort_by, "Feature ID"], ascending=[True, False, True])
+                df = df.drop(columns=["Class Index"])
+                st.dataframe(
+                    df,
+                    width="content",
+                    hide_index=True,
+                    key=f"c2f_mapping_table_{id}"
+                )
+        
+        else:  # Class to Feature Counts
+            data_total = []
+            
+            for cls in selected_labels:
+                class_name = exp.dataset.classes[cls]
+                features_with_class = 0
+                features_majority = 0
+                
+                for f in selected_features:
+                    if f.class_counts.get(cls, 0) > 0:
+                        features_with_class += 1
+                        if f.majority_class == cls:
+                            features_majority += 1
+                
+                data_total.append({
+                    "Class": class_name,
+                    "Count": features_with_class,
+                    "Count Majority": features_majority
+                })
+            
+            df = pd.DataFrame(data_total)
+            
+            # Background bar (features containing class)
+            base = alt.Chart(df).mark_bar(color='steelblue', opacity=1.0).encode(
+                x=alt.X("Class:N", title="Class"),
+                y=alt.Y("Count:Q", title="Number of Features"),
+                tooltip=[
+                    alt.Tooltip("Class:N", title="Class"),
+                    alt.Tooltip("Count:Q", title="Features containing class")
+                
+                ]
+            )
+            
+            # Foreground bar (features where class is majority)
+            overlay = alt.Chart(df).mark_bar(color='blue', opacity=1.0).encode(
+                x=alt.X("Class:N", title="Class"),
+                y=alt.Y("Count Majority:Q", title="Number of Features"),
+                tooltip=[
+                    alt.Tooltip("Class:N", title="Class"),
+                    alt.Tooltip("Count Majority:Q", title="Features where class is majority")
+                ]
+            )
+            
+            chart = (base + overlay).properties(
+                width=600,
+                height=400
+            )
+            st.altair_chart(chart, use_container_width=True, key=f"c2f_counts_chart_{id}")
+    
+    @st.fragment
+    def cc_viewer():
+        focused_class_names = [exp.dataset.classes[i] for i in focused_classes]
+        selected_classes = st.multiselect("Co-Occurrences", options=focused_class_names, default=[], key=f"class_selector_c2f_{id}")
         selected_labels = set(exp.dataset.classes.index(c) for c in selected_classes)
         
         entries = []
@@ -185,20 +361,9 @@ def render_coverage_map(id: int):
             st.dataframe(df, width="content", key=f"class_to_feature_table_{id}", hide_index=True)
 
     @st.fragment
-    def f2m_viewer():
-        selected_classes = st.multiselect("Filter Classes", options=classes, default=classes, key=f"member_classes_selector_f2m_{id}")
-        selected_labels = set(classes.index(c) for c in selected_classes)
-        f2m_features = [f for f in selected_features if any([lab in selected_labels for lab in f.class_counts.keys()])]
-        
-        with st.container(height=600):
-            for f in f2m_features:
-                relevant_members = [n for n in f.members if node2label[n] in selected_labels]
-                
-                with st.expander(f"Feature {f.id} ({len(relevant_members)} / {f.size})", expanded=False):
-                    st.write(",".join(map(str, relevant_members)))
-
-    @st.fragment
     def datex_viewer():
+        node2label = exp.dataset.labels_by_split[exp.split]
+        
         @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__})
         def load_datapoints_by_indices(exp: LossLandscapeExperiment, indices: tuple[int, ...]) -> list:
             """Load datapoints from dataset by indices. Cached to avoid repeated expensive access."""
@@ -236,10 +401,11 @@ def render_coverage_map(id: int):
         with st.container(horizontal=True, vertical_alignment="center"):
             mode = st.selectbox("Load Mode", options=["From Indices", "From Selected Features"], index=1, key=f"data_explorer_mode_selector_{id}")
             if mode == "From Selected Features":
-                selected_classes = st.multiselect("Filter Classes", options=classes, default=classes, key=f"member_classes_selector_datex_{id}")
+                focused_class_names = [exp.dataset.classes[i] for i in focused_classes]
+                selected_classes = st.multiselect("Filter Classes", options=focused_class_names, default=focused_class_names, key=f"member_classes_selector_datex_{id}")
                 selected_labels = set(classes.index(c) for c in selected_classes)
             elif mode == "From Indices":
-                selected_labels = set(range(len(classes)))
+                selected_labels = set(focused_classes)
                 cs_idx = st.text_input("Data Indices (comma-separated)", key=f"data_explorer_indices_{id}", value="")
         
         def load_from_indices_fids(indices_fids: list[tuple[int, int]], siamese: bool = False):
@@ -309,46 +475,21 @@ def render_coverage_map(id: int):
                 image_view(siamese_indices_fids, siamese_datapoints, True)
         else:
             image_view(indices_fids, datapoints)
-        
-    with f2c:                
-        f2c_viewer()
-        
-    with acc:
-        total_points = sum([f.size for f in selected_features])
-        correct_points = 0
-        preds = get_preds(exp)
-        node2label = exp.dataset.labels_by_split[exp.split]
-        
-        for f in selected_features:
-            correct_points += sum([1 for n in f.members if preds[n] == node2label[n]])
-                    
-        accuracy = correct_points / total_points if total_points > 0 else 0.0
-        
-        st.write(f"Accuracy over selected features: **{accuracy * 100.0:0.3f}%** ({correct_points} / {total_points})")
-        
-        confusion = pd.DataFrame(0, index=exp.dataset.classes, columns=exp.dataset.classes)
-        for f in selected_features:
-            for n in f.members:
-                true_cls = exp.dataset.classes[node2label[n]]
-                pred_cls = exp.dataset.classes[preds[n]]
-                confusion.at[true_cls, pred_cls] += 1 # type: ignore
-                    
-        heat = alt.Chart(confusion.reset_index().melt(id_vars='index')).mark_rect().encode(
-            x=alt.X('variable:N', title="Predicted Class"),
-            y=alt.Y('index:N', title="True Class"),
-            color=alt.Color('value:Q', scale=alt.Scale(scheme='blues', type="symlog"), title="Number of Points"),
-            tooltip=[alt.Tooltip('value:Q', title="Number of Points"), alt.Tooltip('index:N', title="True Class"), alt.Tooltip('variable:N', title="Predicted Class")]
-        ).properties(
-            width=400,
-            height=400
-        )
-        
-        st.altair_chart(heat, use_container_width=True, key=f"confusion_heatmap_{id}")
+    
+    def show_utility(container, viewer_func, name):
+        with container:
+            show = True
+            
+            if many_classes:
+                show = st.checkbox(f"Show {name} View", key=f"show_cov_view_{name}", value=False)
 
-    with c2f:
-        c2f_viewer()        
-    with f2m:
-        f2m_viewer()
-                    
-    with datex:
-        datex_viewer()
+            if show:
+                viewer_func()
+            else:
+                st.info(f"{name} view is hidden")    
+
+    show_utility(f2c, f2c_viewer, "Feature to Class")
+    show_utility(acc, acc_viewer, "Accuracy")
+    show_utility(c2f, c2f_viewer, "Class to Features")
+    show_utility(cc, cc_viewer, "Class to Feature")
+    show_utility(datex, datex_viewer, "Data Explorer")
