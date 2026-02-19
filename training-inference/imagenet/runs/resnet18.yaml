@@ -1,0 +1,44 @@
+datasets:
+  imagenet: /imagenet/
+
+train:
+  seed: 1771523625
+  model: resnet18
+  dataset: imagenet
+
+  batch_size: 256
+  epochs: 140
+  lr: 0.1
+  betas: [0.9, 0.999]
+  weight_decay: 1e-4
+  schedule: 
+    type: cosineWR
+    T0: 10
+    T_mult: 2
+
+  checkpoints_dir: /checkpoints/
+  tensorboard_dir: /tboard/
+
+infer:
+  output_dir: /inference/
+
+  collect:
+    - path: conv1
+      tag: conv1
+    - path: layer1
+      tag: layer1
+    - path: layer2
+      tag: layer2
+    - path: layer3
+      tag: layer3
+    - path: layer4
+      tag: layer4
+    - path: fc
+      tag: penultimate
+
+  epochs:
+    - all
+
+name: resnet18_imagenet
+random: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+device: cuda:0

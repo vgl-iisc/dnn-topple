@@ -1,0 +1,17 @@
+services:
+  imagenet:
+    build: .
+
+    volumes:
+      - ../../datasets/imagenet/data/:/imagenet:ro
+      - ./runs:/runs:ro
+      - checkpoints:/checkpoints:rw
+      - tboard:/tboard:rw
+      - inference:/inference:rw
+      - logs:/logs:rw
+
+volumes:
+  checkpoints:
+  tboard:
+  inference:
+  logs:
