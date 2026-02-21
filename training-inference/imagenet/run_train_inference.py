@@ -114,9 +114,9 @@ def build_model(cfg, num_classes, device):
 	return model
 
 def make_optimizer(model, cfg):
-	lr = cfg["lr"]
-	betas = cfg.get("betas", (0.9, 0.999))
-	decay = cfg.get("weight_decay", 0.0)
+	lr = float(cfg["lr"])
+	betas = tuple(cfg.get("betas", (0.9, 0.999)))
+	decay = float(cfg.get("weight_decay", 0.0))
 
 	return torch.optim.Adam(model.parameters(), lr=lr, betas=betas, weight_decay=decay)
 

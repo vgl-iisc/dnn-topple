@@ -10,6 +10,8 @@ services:
       - inference:/inference:rw
       - logs:/logs:rw
 
+    gpus: all
+
 volumes:
   checkpoints:
   tboard:
