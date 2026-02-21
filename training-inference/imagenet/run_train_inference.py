@@ -173,7 +173,7 @@ def train_epoch(model, loader, criterion, criterion_collect, optimizer, device, 
 		collected_losses.append(loss_collect.detach())
 		collected_labels.append(labels.detach())
 		collected_preds.append(preds.detach())
-		collected_perm_indices.append(perm_idxs.to(dtype=torch.uint64))
+		collected_perm_indices.append(perm_idxs.to(dtype=torch.int64))
 
 	epoch_loss = running_loss / total
 	epoch_acc = correct / total
@@ -218,7 +218,7 @@ def validate(model, loader, criterion, criterion_collect, device):
 			collected_losses.append(loss_collect.detach())
 			collected_labels.append(labels.detach())
 			collected_preds.append(preds.detach())
-			collected_perm_indices.append(perm_idxs.to(dtype=torch.uint64))
+			collected_perm_indices.append(perm_idxs.to(dtype=torch.int64))
 	
 	return running_loss / total, correct / total, {
 		'losses': collected_losses,
