@@ -1,5 +1,5 @@
 datasets:
-  imagenet: /imagenet/
+  imagenet: ./datasets/imagenet/data
 
 train:
   seed: 1771523575
@@ -16,11 +16,11 @@ train:
     T0: 10
     T_mult: 2
 
-  checkpoints_dir: /checkpoints/
-  tensorboard_dir: /tboard/
+  checkpoints_dir: ./checkpoints/
+  tensorboard_dir: ./tboard/
 
 infer:
-  output_dir: /inference/
+  output_dir: ./inference/
 
   collect:
     - path: conv1
