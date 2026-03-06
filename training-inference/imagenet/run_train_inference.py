@@ -31,6 +31,9 @@ from logging import Logger, FileHandler, Formatter, StreamHandler
 
 logger = Logger(__name__)
 
+# Memory logging interval (in batches)
+MEMORY_LOG_INTERVAL = 10
+
 def set_seed(seed: int):
 	torch.manual_seed(seed)
 	torch.cuda.manual_seed_all(seed)
@@ -62,6 +65,54 @@ def get_memory_usage(device=None):
 		"cpu_vms": cpu_vms,
 		**gpu_stats,
 	}
+
+
+def log_memory_stats(device, writer, epoch, step=None, phase="", prev_mem=None):
+	"""Log memory stats to both logger and tensorboard."""
+	mem = get_memory_usage(device)
+	
+	# Construct log message
+	log_parts = []
+	if phase:
+		log_parts.append(f"Memory [{phase}]:")
+	else:
+		log_parts.append("Memory:")
+	
+	log_parts.append(f"CPU RSS={mem['cpu_rss']/1e9:.2f}GB")
+	log_parts.append(f"CPU VMS={mem['cpu_vms']/1e9:.2f}GB")
+	
+	if 'gpu_allocated' in mem:
+		log_parts.append(f"GPU alloc={mem['gpu_allocated']/1e9:.2f}GB")
+		log_parts.append(f"GPU reserved={mem['gpu_reserved']/1e9:.2f}GB")
+	
+	if prev_mem is not None:
+		delta_cpu_rss = mem['cpu_rss'] - prev_mem['cpu_rss']
+		log_parts.append(f"(CPU delta={delta_cpu_rss/1e6:.1f}MB)")
+		if 'gpu_allocated' in mem and 'gpu_allocated' in prev_mem:
+			delta_gpu = mem['gpu_allocated'] - prev_mem['gpu_allocated']
+			log_parts.append(f"(GPU delta={delta_gpu/1e6:.1f}MB)")
+	
+	logger.info(" ".join(log_parts))
+	
+	# Log to tensorboard
+	if writer is not None:
+		# Determine the global step for tensorboard
+		if step is not None:
+			global_step = step
+		else:
+			global_step = epoch
+		
+		prefix = f"mem/{phase}/" if phase else "mem/"
+		
+		writer.add_scalar(f'{prefix}cpu_rss', mem['cpu_rss'], global_step)
+		writer.add_scalar(f'{prefix}cpu_vms', mem['cpu_vms'], global_step)
+		if 'gpu_allocated' in mem:
+			writer.add_scalar(f'{prefix}gpu_allocated', mem['gpu_allocated'], global_step)
+			writer.add_scalar(f'{prefix}gpu_reserved', mem['gpu_reserved'], global_step)
+			writer.add_scalar(f'{prefix}gpu_max_allocated', mem['gpu_max_allocated'], global_step)
+			writer.add_scalar(f'{prefix}gpu_max_reserved', mem['gpu_max_reserved'], global_step)
+	
+	return mem
 
 
 def attach_collection_hooks(model, collection, collected_activations):
@@ -170,7 +221,14 @@ def train_epoch(model, loader, criterion, criterion_collect, optimizer, device, 
 	collected_preds = []
 	collected_perm_indices = []
 	
+	prev_mem = None
+	
 	for step, batch in tqdm(enumerate(loader), total=len(loader), desc=f'Epoch {epoch}'):
+		# Log memory every MEMORY_LOG_INTERVAL batches
+		if step % MEMORY_LOG_INTERVAL == 0:
+			global_step = epoch * len(loader) + step
+			prev_mem = log_memory_stats(device, writer, epoch, global_step, f"train_batch_{step}", prev_mem)
+		
 		images = batch['image']
 		labels = batch['label']
 		perm_idxs = batch['perm_index']
@@ -194,7 +252,7 @@ def train_epoch(model, loader, criterion, criterion_collect, optimizer, device, 
 		correct += (preds == labels).sum().item()
 		total += labels.size(0)
 
-		if writer is not None and step % 100 == 0:
+		if writer is not None and step % MEMORY_LOG_INTERVAL == 0:
 			writer.add_scalar('train/batch_loss', loss.item(), epoch * len(loader) + step)
 		
 		# Always collect outputs
@@ -214,7 +272,7 @@ def train_epoch(model, loader, criterion, criterion_collect, optimizer, device, 
 	}
 
 
-def validate(model, loader, criterion, criterion_collect, device):
+def validate(model, loader, criterion, criterion_collect, device, epoch=0, writer=None):
 	model.eval()
 	running_loss = 0.0
 	correct = 0
@@ -225,8 +283,15 @@ def validate(model, loader, criterion, criterion_collect, device):
 	collected_preds = []
 	collected_perm_indices = []
 	
+	prev_mem = None
+	
 	with torch.no_grad():
-		for batch in tqdm(loader, total=len(loader), desc='Validation'):
+		for step, batch in enumerate(tqdm(loader, total=len(loader), desc='Validation')):
+			# Log memory every MEMORY_LOG_INTERVAL batches
+			if step % MEMORY_LOG_INTERVAL == 0:
+				global_step = epoch * len(loader) + step
+				prev_mem = log_memory_stats(device, writer, epoch, global_step, f"val_batch_{step}", prev_mem)
+			
 			images = batch['image']
 			labels = batch['label']
 			perm_idxs = batch['perm_index']
@@ -364,6 +429,9 @@ def do_run(cfg, device, tboard_base, checkpoints_base, inference_cfg, only_last_
 		t0 = time.time()
 		logger.info(f'--- Epoch {epoch}/{epochs} ---')
 		
+		# Log memory before start of epoch
+		prev_mem = log_memory_stats(device, writer, epoch, None, f"epoch_{epoch}_start", prev_mem)
+		
 		should_collect_inference = False
 		epochs_config = inference_cfg.get('epochs', 'all')
 		if epochs_config == 'all' or 'all' in (epochs_config if isinstance(epochs_config, list) else []):
@@ -402,7 +470,7 @@ def do_run(cfg, device, tboard_base, checkpoints_base, inference_cfg, only_last_
 			scheduler.step()
 		logger.info('Evaluating on validation set...')
 		
-		val_loss, val_acc, val_outputs = validate(model, test_loader, criterion, criterion_collect, device)
+		val_loss, val_acc, val_outputs = validate(model, test_loader, criterion, criterion_collect, device, epoch, writer)
 		
 		# Remove val hooks
 		if should_collect_inference:

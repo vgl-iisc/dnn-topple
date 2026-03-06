@@ -6,7 +6,7 @@ train:
   model: resnet50
   dataset: imagenet
 
-  batch_size: 256
+  batch_size: 1024
   epochs: 140
   lr: 0.1
   betas: [0.9, 0.999]
