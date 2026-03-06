@@ -18,6 +18,9 @@ import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
+import psutil
+import gc
+
 import imagenet_loader
 import cifar10_loader
 import mnist_loader
@@ -35,6 +38,31 @@ def set_seed(seed: int):
 	random.seed(seed)
 	import numpy as np
 	np.random.seed(seed)
+
+
+def get_memory_usage(device=None):
+	"""Return a dict of current CPU and GPU memory usage."""
+	proc = psutil.Process(os.getpid())
+	cpu_rss = proc.memory_info().rss
+	cpu_vms = proc.memory_info().vms
+
+	gpu_stats = {}
+	if torch.cuda.is_available():
+		if device is None:
+			device = torch.device('cuda')
+		gpu_stats = {
+			"gpu_allocated": torch.cuda.memory_allocated(device),
+			"gpu_reserved": torch.cuda.memory_reserved(device),
+			"gpu_max_allocated": torch.cuda.max_memory_allocated(device),
+			"gpu_max_reserved": torch.cuda.max_memory_reserved(device),
+		}
+
+	return {
+		"cpu_rss": cpu_rss,
+		"cpu_vms": cpu_vms,
+		**gpu_stats,
+	}
+
 
 def attach_collection_hooks(model, collection, collected_activations):
 	"""Attach hooks to model layers to collect activations during forward pass."""
@@ -328,6 +356,10 @@ def do_run(cfg, device, tboard_base, checkpoints_base, inference_cfg, only_last_
 	best_epoch = 0
 	ckpt_dir = checkpoints_base
 
+	# Track memory usage over epochs to help detect leaks
+	prev_mem = get_memory_usage(device)
+	logger.info(f"Initial memory - CPU RSS: {prev_mem['cpu_rss']} bytes, GPU allocated: {prev_mem.get('gpu_allocated', 'N/A')} bytes")
+
 	for epoch in range(1, epochs + 1):
 		t0 = time.time()
 		logger.info(f'--- Epoch {epoch}/{epochs} ---')
@@ -376,6 +408,28 @@ def do_run(cfg, device, tboard_base, checkpoints_base, inference_cfg, only_last_
 		if should_collect_inference:
 			for h in val_hooks:
 				h.remove()
+
+		# Memory tracking: run a GC and log current usage and delta from previous epoch
+		gc.collect()
+		current_mem = get_memory_usage(device)
+		delta_cpu_rss = current_mem['cpu_rss'] - prev_mem['cpu_rss']
+		delta_cpu_vms = current_mem['cpu_vms'] - prev_mem['cpu_vms']
+		logger.info(
+			f"Memory after epoch {epoch}: CPU RSS={current_mem['cpu_rss']} (+{delta_cpu_rss}), "
+			f"CPU VMS={current_mem['cpu_vms']} (+{delta_cpu_vms}), "
+			f"GPU allocated={current_mem.get('gpu_allocated', 'N/A')} (+{current_mem.get('gpu_allocated', 0) - prev_mem.get('gpu_allocated', 0)})"
+		)
+		
+		# Add memory scalars to tensorboard
+		writer.add_scalar('mem/cpu_rss', current_mem['cpu_rss'], epoch)
+		writer.add_scalar('mem/cpu_vms', current_mem['cpu_vms'], epoch)
+		if 'gpu_allocated' in current_mem:
+			writer.add_scalar('mem/gpu_allocated', current_mem['gpu_allocated'], epoch)
+			writer.add_scalar('mem/gpu_reserved', current_mem['gpu_reserved'], epoch)
+			writer.add_scalar('mem/gpu_max_allocated', current_mem['gpu_max_allocated'], epoch)
+			writer.add_scalar('mem/gpu_max_reserved', current_mem['gpu_max_reserved'], epoch)
+		
+		prev_mem = current_mem
 
 		writer.add_scalar('train/loss', train_loss, epoch)
 		writer.add_scalar('train/accuracy', train_acc, epoch)
