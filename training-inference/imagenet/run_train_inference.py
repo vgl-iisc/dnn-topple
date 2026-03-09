@@ -372,7 +372,7 @@ def save_checkpoint(state, ckpt_dir, epoch):
 	return path
 
 def build_fixed_balanced_indices(labels, ds_subsample, split_name):
-	"""Build deterministic class-balanced subset indices over reordered labels."""
+	"""Build fixed random class-balanced subset indices over reordered labels."""
 	if ds_subsample is None:
 		return None
 
@@ -435,7 +435,12 @@ def build_fixed_balanced_indices(labels, ds_subsample, split_name):
 		if k <= 0:
 			continue
 		cls_positions = torch.where(labels == cls)[0]
-		selected_positions.append(cls_positions[:k])
+		if cls_positions.numel() > k:
+			perm = torch.randperm(int(cls_positions.numel()))
+			chosen = cls_positions[perm[:k]]
+		else:
+			chosen = cls_positions
+		selected_positions.append(chosen)
 
 	if len(selected_positions) == 0:
 		return None

@@ -19,12 +19,12 @@ train:
     step_size: 30
     gamma: 0.1
 
-  checkpoints_dir: /media/santripta/data2/Training_imagenet/checkpoints/
-  tensorboard_dir: /media/santripta/data2/Training_imagenet/tensorboard/
+  checkpoints_dir: ./checkpoints/
+  tensorboard_dir: ./tensorboard/
   only_last_best: true
 
 infer:
-  output_dir: /media/santripta/data2/Inference_imagenet/landscape_data_cross_epoch
+  output_dir: ./inference/landscape_data_cross_epoch
 
   collect:
     - path: conv1
