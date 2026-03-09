@@ -32,7 +32,7 @@ from logging import Logger, FileHandler, Formatter, StreamHandler
 logger = Logger(__name__)
 
 # Memory logging interval (in batches)
-MEMORY_LOG_INTERVAL = 10
+BATCH_LOG_INTERVAL = 10
 
 def set_seed(seed: int):
 	torch.manual_seed(seed)
@@ -114,6 +114,8 @@ def log_memory_stats(device, writer, epoch, step=None, phase="", prev_mem=None):
 	
 	return mem
 
+def log_collected_shapes(collected_preds):
+	logger.info(f"Collected predictions count: {len(collected_preds)}, example shape: {collected_preds[0].shape if len(collected_preds) > 0 else 'N/A'}")
 
 def attach_collection_hooks(model, collection, collected_activations):
 	"""Attach hooks to model layers to collect activations during forward pass."""
@@ -225,9 +227,10 @@ def train_epoch(model, loader, criterion, criterion_collect, optimizer, device, 
 	
 	for step, batch in tqdm(enumerate(loader), total=len(loader), desc=f'Epoch {epoch}'):
 		# Log memory every MEMORY_LOG_INTERVAL batches
-		if step % MEMORY_LOG_INTERVAL == 0:
+		if step % BATCH_LOG_INTERVAL == 0:
 			global_step = epoch * len(loader) + step
 			prev_mem = log_memory_stats(device, writer, epoch, global_step, f"train_batch_{step}", prev_mem)
+			log_collected_shapes(collected_preds)
 		
 		images = batch['image']
 		labels = batch['label']
@@ -252,7 +255,7 @@ def train_epoch(model, loader, criterion, criterion_collect, optimizer, device, 
 		correct += (preds == labels).sum().item()
 		total += labels.size(0)
 
-		if writer is not None and step % MEMORY_LOG_INTERVAL == 0:
+		if writer is not None and step % BATCH_LOG_INTERVAL == 0:
 			writer.add_scalar('train/batch_loss', loss.item(), epoch * len(loader) + step)
 		
 		# Always collect outputs
@@ -288,9 +291,10 @@ def validate(model, loader, criterion, criterion_collect, device, epoch=0, write
 	with torch.no_grad():
 		for step, batch in enumerate(tqdm(loader, total=len(loader), desc='Validation')):
 			# Log memory every MEMORY_LOG_INTERVAL batches
-			if step % MEMORY_LOG_INTERVAL == 0:
+			if step % BATCH_LOG_INTERVAL == 0:
 				global_step = epoch * len(loader) + step
 				prev_mem = log_memory_stats(device, writer, epoch, global_step, f"val_batch_{step}", prev_mem)
+				log_collected_shapes(collected_preds)
 			
 			images = batch['image']
 			labels = batch['label']
