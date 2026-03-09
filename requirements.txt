@@ -91,3 +91,4 @@ plotly==6.4.0
 nbformat==5.10.4
 polyscope==2.5.0
 gpytoolbox==0.3.7
+psutil
