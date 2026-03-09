@@ -114,8 +114,14 @@ def log_memory_stats(device, writer, epoch, step=None, phase="", prev_mem=None):
 	
 	return mem
 
-def log_collected_shapes(collected_preds):
-	logger.info(f"Collected predictions count: {len(collected_preds)}, example shape: {collected_preds[0].shape if len(collected_preds) > 0 else 'N/A'}")
+def log_collected_shapes(collected_act, tag=""):
+	tag = f"[{tag}] " if tag else ""
+ 
+	for k, v in collected_act.items():
+		if isinstance(v, list) and len(v) > 0:
+			logger.info(f"{tag}Collected activations for tag '{k}': {len(v)} batches, example shape: {v[0].shape}")
+		else:
+			logger.info(f"{tag}No activations collected for tag '{k}' yet.")
 
 def attach_collection_hooks(model, collection, collected_activations):
 	"""Attach hooks to model layers to collect activations during forward pass."""
@@ -212,7 +218,7 @@ def make_lr_scheduler(optimizer, cfg):
 	else:
 		return None
 
-def train_epoch(model, loader, criterion, criterion_collect, optimizer, device, epoch, writer):
+def train_epoch(model, loader, criterion, criterion_collect, optimizer, device, epoch, writer, acts):
 	model.train()
 	running_loss = 0.0
 	correct = 0
@@ -230,7 +236,7 @@ def train_epoch(model, loader, criterion, criterion_collect, optimizer, device, 
 		if step % BATCH_LOG_INTERVAL == 0:
 			global_step = epoch * len(loader) + step
 			prev_mem = log_memory_stats(device, writer, epoch, global_step, f"train_batch_{step}", prev_mem)
-			log_collected_shapes(collected_preds)
+			log_collected_shapes(acts, tag=f"train")
 		
 		images = batch['image']
 		labels = batch['label']
@@ -275,7 +281,7 @@ def train_epoch(model, loader, criterion, criterion_collect, optimizer, device, 
 	}
 
 
-def validate(model, loader, criterion, criterion_collect, device, epoch=0, writer=None):
+def validate(model, loader, criterion, criterion_collect, device, epoch=0, writer=None, acts={}):
 	model.eval()
 	running_loss = 0.0
 	correct = 0
@@ -294,7 +300,7 @@ def validate(model, loader, criterion, criterion_collect, device, epoch=0, write
 			if step % BATCH_LOG_INTERVAL == 0:
 				global_step = epoch * len(loader) + step
 				prev_mem = log_memory_stats(device, writer, epoch, global_step, f"val_batch_{step}", prev_mem)
-				log_collected_shapes(collected_preds)
+				log_collected_shapes(acts, tag=f"val")
 			
 			images = batch['image']
 			labels = batch['label']
@@ -463,7 +469,8 @@ def do_run(cfg, device, tboard_base, checkpoints_base, inference_cfg, only_last_
 			collection = inference_cfg.get('collect', [])
 			train_hooks = attach_collection_hooks(model, collection, train_activations)
 		
-		train_loss, train_acc, train_outputs = train_epoch(model, train_loader, criterion, criterion_collect, optimizer, device, epoch, writer)
+		train_loss, train_acc, train_outputs = train_epoch(model, train_loader, criterion, criterion_collect, optimizer, 
+                                                     device, epoch, writer, train_activations)
 		
 		if should_collect_inference:
 			for h in train_hooks:
@@ -474,7 +481,8 @@ def do_run(cfg, device, tboard_base, checkpoints_base, inference_cfg, only_last_
 			scheduler.step()
 		logger.info('Evaluating on validation set...')
 		
-		val_loss, val_acc, val_outputs = validate(model, test_loader, criterion, criterion_collect, device, epoch, writer)
+		val_loss, val_acc, val_outputs = validate(model, test_loader, criterion, criterion_collect, 
+                                            device, epoch, writer, val_activations)
 		
 		# Remove val hooks
 		if should_collect_inference:
