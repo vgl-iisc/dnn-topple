@@ -226,7 +226,7 @@ def make_optimizer(model, cfg):
 	typ = opt_cfg.get("type", "adam").lower()
 	if typ == "sgd":
 		momentum = opt_cfg.get("momentum", 0.9)
-		return torch.optim.SGD(model.parameters(), lr=cfg["lr"], momentum=momentum, weight_decay=cfg.get("weight_decay", 0.0))
+		return torch.optim.SGD(model.parameters(), lr=float(cfg["lr"]), momentum=momentum, weight_decay=float(cfg.get("weight_decay", 0.0)))
 	elif typ == "adam":
 		lr = float(cfg["lr"])
 		betas = tuple(cfg.get("betas", (0.9, 0.999)))
