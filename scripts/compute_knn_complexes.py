@@ -5,7 +5,7 @@ Goes through all landscapes in the data directory and computes
 
 import torch
 from knn_graph import compute_knn_graph
-# from rng_graph import compute_rng_graph
+from rn_graph import compute_rn_graph
 
 import os
 
@@ -21,7 +21,7 @@ import pickle
 import logging
 
 def save_name_txt(file, k, connected):
-    return f"adj_{file[len("vectors_"):-4]}_{k}" + ("_connected" if connected else "")
+    return f"adj_{file[len('vectors_'):-4]}_{k}" + ("_connected" if connected else "")
 
 def save_name_pt(file, k, connected):
     return f"adj_{os.path.splitext(file)[0]}_{k}" + ("_connected" if connected else "")
@@ -52,13 +52,15 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
             os.makedirs(save_basepath, exist_ok=True)
 
             # if method == 'r':
-            if False:
-                pass
+            if method == 'r':
+                start = timer()
+                Gmax = compute_rn_graph(data, complexity=75, graph_degree=60, num_threads=1)
             else:
                 start = timer()
                 Gmax = compute_knn_graph(data, n_neighbors=max_k)
-                end = timer()
-                times[data.shape].append(end - start)
+            
+            end = timer()
+            times[data.shape].append(end - start)
             
             if not nx.is_connected(Gmax):
                 log.info(f"{id}: Warning: max_k={max_k} does not yield a connected graph for {tensor_path}, skipping")
@@ -148,7 +150,8 @@ def main():
         
         logging.info(f"Done with {root}")
     
-    with open("knn_times.pkl", "wb") as f:
+    name = "rn_times.pkl" if method == 'r' else "knn_times.pkl"
+    with open(name, "wb") as f:
         pickle.dump(times_dict, f)
                 
 if __name__ == "__main__":
