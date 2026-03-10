@@ -17,14 +17,6 @@ collect:
     - path: fc
       tag: 1
 
-  vgg16:
-    - path: classifier[6]
-      tag: 1
-
-  wide_resnet50_2:
-    - path: fc
-      tag: 1
-
 runs:
   densenet_cifar:
     model: densenet121
@@ -42,32 +34,10 @@ runs:
     model: resnet18
     dataset: mnist
 
-  vgg_cifar:
-    model: vgg16
-    dataset: cifar
-
-  vgg_mnist:
-    model: vgg16
-    dataset: mnist
-
-  wres_cifar:
-    model: wide_resnet50_2
-    dataset: cifar
-
-  wres_mnist:
-    model: wide_resnet50_2
-    dataset: mnist
-
 do:
   - densenet_cifar
   - densenet_mnist
-  - resnet_cifar
-  - resnet_mnist
-  - vgg_cifar
-  - vgg_mnist
-  - wres_mnist
-  - wres_cifar
 
 checkpoints_dir: /media/solis/DATA/Santripta/Training_better/checkpoints/
-save_dir: /media/santripta/data2/Inference_better/landscape_data_cross_epoch/
-device: cuda:1
+save_dir: /media/santripta/data2/Inference_better/landscape_data_cross_epoch_re/
+device: cuda:0

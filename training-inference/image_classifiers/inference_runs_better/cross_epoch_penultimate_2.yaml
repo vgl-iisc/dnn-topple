@@ -1,0 +1,43 @@
+datasets: 
+  cifar: ./datasets/cifar/data
+  mnist: ./datasets/mnist/data
+
+epochs:
+  cifar: 
+    - all
+  mnist: 
+    - all
+
+collect:
+  densenet121:
+    - path: classifier
+      tag: 1
+
+  resnet18:
+    - path: fc
+      tag: 1
+
+runs:
+  densenet_cifar:
+    model: densenet121
+    dataset: cifar
+
+  densenet_mnist:
+    model: densenet121
+    dataset: mnist
+
+  resnet_cifar:
+    model: resnet18
+    dataset: cifar
+
+  resnet_mnist:
+    model: resnet18
+    dataset: mnist
+
+do:
+  - resnet_cifar
+  - resnet_mnist
+
+checkpoints_dir: /media/solis/DATA/Santripta/Training_better/checkpoints/
+save_dir: /media/santripta/data2/Inference_better/landscape_data_cross_epoch_re/
+device: cuda:1
