@@ -123,7 +123,7 @@ def log_collected_shapes(collected_act, tag=""):
 		else:
 			logger.info(f"{tag}No activations collected for tag '{k}' yet.")
 
-def attach_collection_hooks(model, collection, collected_activations):
+def attach_collection_hooks(model, collection, collected_activations, subsample=None):
 	"""Attach hooks to model layers to collect activations during forward pass."""
 	def find_module(path):
 		parts = path.split('.')
@@ -146,7 +146,27 @@ def attach_collection_hooks(model, collection, collected_activations):
 		logger.info(f"Attaching hook to {path} with tag {tag}: found {mod.__class__.__name__}")
 		
 		def hook_fn(m, i, o, tag=tag):
-			collected_activations[tag].append(i[0].detach().cpu())
+			acts = i[0].detach().cpu()
+
+			if subsample is not None and acts.ndim > 2:
+				# (B, C, H, W) -> (B, C, subsample, subsample), randomly sample spatial patches of subsample x subsample
+				# per data point in the batch
+				B, _, H, W = acts.shape
+				assert H == W, "assumes square spatial dimensions for subsampling"
+
+				if H > subsample and W > subsample:					
+					top = torch.randint(0, H - subsample + 1, (B,))
+					left = torch.randint(0, W - subsample + 1, (B,))
+
+					grid_h, grid_w = torch.meshgrid(torch.arange(subsample), torch.arange(subsample), indexing='ij')
+					grid_h = top[:, None, None] + grid_h.unsqueeze(0)
+					grid_w = left[:, None, None] + grid_w.unsqueeze(0)
+
+					batch_idxs = torch.arange(B).view(B, 1, 1)
+
+					acts = acts[batch_idxs, :, grid_h, grid_w]
+
+			collected_activations[tag].append(acts)
 			
 		hooks.append(mod.register_forward_hook(hook_fn))
 	
@@ -201,11 +221,19 @@ def build_model(cfg, num_classes, device):
 	return model
 
 def make_optimizer(model, cfg):
-	lr = float(cfg["lr"])
-	betas = tuple(cfg.get("betas", (0.9, 0.999)))
-	decay = float(cfg.get("weight_decay", 0.0))
+	opt_cfg = cfg.get("opt", {})
 
-	return torch.optim.Adam(model.parameters(), lr=lr, betas=betas, weight_decay=decay)
+	typ = opt_cfg.get("type", "adam").lower()
+	if typ == "sgd":
+		momentum = opt_cfg.get("momentum", 0.9)
+		return torch.optim.SGD(model.parameters(), lr=float(cfg["lr"]), momentum=momentum, weight_decay=float(cfg.get("weight_decay", 0.0)))
+	elif typ == "adam":
+		lr = float(cfg["lr"])
+		betas = tuple(cfg.get("betas", (0.9, 0.999)))
+		decay = float(cfg.get("weight_decay", 0.0))
+		return torch.optim.Adam(model.parameters(), lr=lr, betas=betas, weight_decay=decay)
+	else:
+		raise ValueError(f"Unsupported optimizer type: {typ}")
 
 def make_lr_scheduler(optimizer, cfg):
 	schedule_cfg = cfg.get('schedule', {})
@@ -214,6 +242,12 @@ def make_lr_scheduler(optimizer, cfg):
 			optimizer, 
 			T_0=schedule_cfg.get('T0', 10), 
 			T_mult=schedule_cfg.get('T_mult', 2)
+		)
+	elif schedule_cfg.get('type') == 'step':
+		return torch.optim.lr_scheduler.StepLR(
+			optimizer, 
+			step_size=schedule_cfg.get('step_size', 30), 
+			gamma=schedule_cfg.get('gamma', 0.1)
 		)
 	else:
 		return None
@@ -337,13 +371,102 @@ def save_checkpoint(state, ckpt_dir, epoch):
 	torch.save(state, path)
 	return path
 
-def save_inference_outputs(epoch, train_outputs, val_outputs, train_activations, val_activations, output_root):
+def build_fixed_balanced_indices(labels, ds_subsample, split_name):
+	"""Build fixed random class-balanced subset indices over reordered labels."""
+	if ds_subsample is None:
+		return None
+
+	logger.info(f"Building fixed balanced indices for split '{split_name}' with ds_subsample={ds_subsample}...")
+
+	ds_subsample = int(ds_subsample)
+	n = int(labels.shape[0])
+	if ds_subsample <= 0 or ds_subsample >= n:
+		if ds_subsample > n:
+			logger.warning(f"Requested ds_subsample={ds_subsample} exceeds split size {n} for '{split_name}'. Using full split.")
+		return None
+
+	unique_classes, class_counts = torch.unique(labels, sorted=True, return_counts=True)
+	n_classes = int(unique_classes.numel())
+	if n_classes == 0:
+		return None
+
+	base = ds_subsample // n_classes
+	remainder = ds_subsample % n_classes
+
+	if remainder != 0:
+		logger.warning(
+			f"Cannot sample exactly equally for split '{split_name}': ds_subsample={ds_subsample} not divisible by {n_classes} classes. "
+			f"Using near-balanced allocation."
+		)
+
+	targets = torch.full((n_classes,), base, dtype=torch.int64)
+	if remainder > 0:
+		targets[:remainder] += 1
+
+	available = class_counts.to(dtype=torch.int64)
+	selected_per_class = torch.minimum(targets, available)
+	deficit = int(ds_subsample - selected_per_class.sum().item())
+
+	if torch.any(selected_per_class < targets):
+		logger.warning(
+			f"Equal per-class sampling not possible for split '{split_name}' due to class counts. "
+			f"Requested targets={targets.tolist()}, available={available.tolist()}."
+		)
+
+	if deficit > 0:
+		capacity = available - selected_per_class
+		for idx in torch.argsort(capacity, descending=True).tolist():
+			if deficit <= 0:
+				break
+			take = min(int(capacity[idx].item()), deficit)
+			if take > 0:
+				selected_per_class[idx] += take
+				deficit -= take
+
+	if deficit > 0:
+		logger.warning(
+			f"Could not reach ds_subsample={ds_subsample} for split '{split_name}'. "
+			f"Using {int(selected_per_class.sum().item())} samples."
+		)
+
+	selected_positions = []
+	for cls_idx, cls in enumerate(unique_classes):
+		k = int(selected_per_class[cls_idx].item())
+		if k <= 0:
+			continue
+		cls_positions = torch.where(labels == cls)[0]
+		if cls_positions.numel() > k:
+			perm = torch.randperm(int(cls_positions.numel()))
+			chosen = cls_positions[perm[:k]]
+		else:
+			chosen = cls_positions
+		selected_positions.append(chosen)
+
+	if len(selected_positions) == 0:
+		return None
+
+	selected_positions = torch.cat(selected_positions)
+	selected_positions, _ = torch.sort(selected_positions)
+	return selected_positions
+
+def save_inference_outputs(
+	epoch,
+	train_outputs,
+	val_outputs,
+	train_activations,
+	val_activations,
+	output_root,
+	ds_subsample=None,
+	fixed_indices_by_split=None,
+):
 	"""Save inference outputs collected during training/validation."""
 	logger.info(f'Saving inference outputs for epoch {epoch}...')
 	
 	# Create output directory for this epoch
 	epoch_output_dir = os.path.join(output_root)
 	os.makedirs(epoch_output_dir, exist_ok=True)
+	if fixed_indices_by_split is None:
+		fixed_indices_by_split = {}
 	
 	import numpy as np
 	
@@ -351,22 +474,53 @@ def save_inference_outputs(epoch, train_outputs, val_outputs, train_activations,
 		loss_dir = os.path.join(epoch_output_dir, "Losses", split)
 		preds_dir = os.path.join(epoch_output_dir, "Predictions", split)
 		tens_dir = os.path.join(epoch_output_dir, "Tensors", split)
+		labels_dir = os.path.join(epoch_output_dir, "Labels", split)
+		idxs_dir = os.path.join(epoch_output_dir, "Indices", split)
 		
 		os.makedirs(loss_dir, exist_ok=True)
 		os.makedirs(preds_dir, exist_ok=True)
 		os.makedirs(tens_dir, exist_ok=True)
+		os.makedirs(labels_dir, exist_ok=True)
+		os.makedirs(idxs_dir, exist_ok=True)
 		
 		collected_losses = torch.cat(output['losses']).detach().cpu()
+		collected_labels = torch.cat(output['labels']).detach().cpu()
 		collected_preds = torch.cat(output['predicted']).detach().cpu()
 		collected_perm_indices = torch.cat(output['perm_indices']).cpu().to(dtype=torch.int64)
 		
 		# The perm_indices tell us the dataset/permutation index (ds[0], ds[1], ds[2], ...)
 		# We need to reorder from shuffled collection order back to permutation order
 		reordered_losses = torch.zeros_like(collected_losses)
+		reordered_labels = torch.zeros_like(collected_labels)
 		reordered_preds = torch.zeros_like(collected_preds)
 		
 		reordered_losses[collected_perm_indices] = collected_losses
+		reordered_labels[collected_perm_indices] = collected_labels
 		reordered_preds[collected_perm_indices] = collected_preds
+
+		selected_positions = fixed_indices_by_split.get(split)
+		if ds_subsample is not None and selected_positions is None:
+			selected_positions = build_fixed_balanced_indices(reordered_labels, ds_subsample, split)
+			fixed_indices_by_split[split] = selected_positions
+
+		if selected_positions is not None:
+			selected_positions = selected_positions.to(dtype=torch.int64)
+			max_idx = int(selected_positions.max().item()) if selected_positions.numel() > 0 else -1
+			if max_idx >= reordered_losses.shape[0]:
+				logger.warning(
+					f"Stored ds_subsample indices for split '{split}' are out of range for current outputs. Recomputing indices."
+				)
+				selected_positions = build_fixed_balanced_indices(reordered_labels, ds_subsample, split)
+				fixed_indices_by_split[split] = selected_positions
+
+		if selected_positions is not None:
+			reordered_losses = reordered_losses[selected_positions]
+			reordered_labels = reordered_labels[selected_positions]
+			reordered_preds = reordered_preds[selected_positions]
+
+		selected_perm_indices = selected_positions if selected_positions is not None else torch.arange(
+			reordered_losses.shape[0], dtype=torch.int64
+		)
 		
 		for tag, activations in collected_activations.items():
 			stacked = torch.cat(activations).detach().cpu()
@@ -374,16 +528,22 @@ def save_inference_outputs(epoch, train_outputs, val_outputs, train_activations,
 			
 			reordered_activations = torch.zeros_like(collated)
 			reordered_activations[collected_perm_indices] = collated
+			if selected_positions is not None:
+				reordered_activations = reordered_activations[selected_positions]
 			
 			logger.info(f'Saving activations for tag {tag}, shape: {reordered_activations.shape}')
 			torch.save(reordered_activations, os.path.join(tens_dir, f"a{tag}_e{epoch}.pt"))
 		
 		# Convert to numpy for saving
 		collected_losses_np = reordered_losses.numpy().reshape(-1, 1).squeeze()
+		collected_labels_np = reordered_labels.numpy().reshape(-1, 1).squeeze()
 		collected_preds_np = reordered_preds.numpy().reshape(-1, 1).squeeze()
+		selected_perm_indices_np = selected_perm_indices.numpy().reshape(-1, 1).squeeze()
 		
 		np.savetxt(os.path.join(loss_dir, f"losses_e{epoch}.txt"), collected_losses_np)
+		np.savetxt(os.path.join(labels_dir, f"labels_e{epoch}.txt"), collected_labels_np, fmt='%d')
 		np.savetxt(os.path.join(preds_dir, f"predictions_e{epoch}.txt"), collected_preds_np, fmt='%d')
+		np.savetxt(os.path.join(idxs_dir, "selected_dataset_indices.txt"), selected_perm_indices_np, fmt='%d')
 	
 	write_output("train", train_outputs, train_activations)
 	write_output("val", val_outputs, val_activations)
@@ -435,6 +595,11 @@ def do_run(cfg, device, tboard_base, checkpoints_base, inference_cfg, only_last_
 	prev_mem = get_memory_usage(device)
 	logger.info(f"Initial memory - CPU RSS: {prev_mem['cpu_rss']} bytes, GPU allocated: {prev_mem.get('gpu_allocated', 'N/A')} bytes")
 
+	collection = inference_cfg.get('collect', [])
+	spatial_subsample = inference_cfg.get('spatial_subsample', None)
+	ds_subsample = inference_cfg.get('ds_subsample', None)
+	fixed_ds_subsample_indices = {}
+
 	for epoch in range(1, epochs + 1):
 		t0 = time.time()
 		logger.info(f'--- Epoch {epoch}/{epochs} ---')
@@ -466,8 +631,7 @@ def do_run(cfg, device, tboard_base, checkpoints_base, inference_cfg, only_last_
 		val_activations = {}
 		
 		if should_collect_inference:
-			collection = inference_cfg.get('collect', [])
-			train_hooks = attach_collection_hooks(model, collection, train_activations)
+			train_hooks = attach_collection_hooks(model, collection, train_activations, spatial_subsample)
 		
 		train_loss, train_acc, train_outputs = train_epoch(model, train_loader, criterion, criterion_collect, optimizer, 
                                                      device, epoch, writer, train_activations)
@@ -475,7 +639,7 @@ def do_run(cfg, device, tboard_base, checkpoints_base, inference_cfg, only_last_
 		if should_collect_inference:
 			for h in train_hooks:
 				h.remove()
-			val_hooks = attach_collection_hooks(model, collection, val_activations)
+			val_hooks = attach_collection_hooks(model, collection, val_activations, spatial_subsample)
 		
 		if scheduler is not None:
 			scheduler.step()
@@ -526,7 +690,16 @@ def do_run(cfg, device, tboard_base, checkpoints_base, inference_cfg, only_last_
 		# Save inference outputs if collected
 		if should_collect_inference:
 			try:
-				save_inference_outputs(epoch - 1, train_outputs, val_outputs, train_activations, val_activations, inference_cfg['output_root'])
+				save_inference_outputs(
+					epoch - 1,
+					train_outputs,
+					val_outputs,
+					train_activations,
+					val_activations,
+					inference_cfg['output_root'],
+					ds_subsample=ds_subsample,
+					fixed_indices_by_split=fixed_ds_subsample_indices,
+				)
 			except Exception as e:
 				logger.error(f'Error saving inference outputs for epoch {epoch}: {e}')
 

@@ -6,22 +6,25 @@ train:
   model: resnet50
   dataset: imagenet
 
-  batch_size: 512
-  epochs: 140
-  lr: 0.1
+  batch_size: 768
+  epochs: 91
+  lr: 0.15
   betas: [0.9, 0.999]
   weight_decay: 1e-4
+  opt:
+    type: sgd
+    momentum: 0.9
   schedule: 
-    type: cosineWR
-    T0: 10
-    T_mult: 2
+    type: step
+    step_size: 30
+    gamma: 0.1
 
   checkpoints_dir: ./checkpoints/
-  tensorboard_dir: ./tboard/
+  tensorboard_dir: ./tensorboard/
   only_last_best: true
 
 infer:
-  output_dir: ./inference/
+  output_dir: ./inference/landscape_data_cross_epoch
 
   collect:
     - path: conv1
@@ -37,9 +40,15 @@ infer:
     - path: fc
       tag: penultimate
 
-  epochs:
-    - all
+  spatial_subsample: 3
+  ds_subsample: 300000
+
+  # collect every four epochs
+  epochs: 4
+
+  # epochs:
+    # - all
 
 name: resnet50_imagenet
-random: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+# random: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 device: cuda:0
