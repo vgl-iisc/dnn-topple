@@ -449,6 +449,67 @@ def build_fixed_balanced_indices(labels, ds_subsample, split_name):
 	selected_positions, _ = torch.sort(selected_positions)
 	return selected_positions
 
+def get_total_examples(batches):
+	return sum(int(batch.shape[0]) for batch in batches)
+
+def build_selection_lookup(total_size, selected_positions=None):
+	if selected_positions is None:
+		selected_positions = torch.arange(total_size, dtype=torch.int64)
+	else:
+		selected_positions = selected_positions.detach().cpu().to(dtype=torch.int64).reshape(-1)
+
+	selection_lookup = torch.full((total_size,), -1, dtype=torch.int64)
+	selection_lookup[selected_positions] = torch.arange(selected_positions.numel(), dtype=torch.int64)
+	return selected_positions, selection_lookup
+
+def reorder_scalar_batches(value_batches, perm_batches, selection_lookup, selected_size):
+	first_batch = value_batches[0].detach().cpu().reshape(-1)
+	reordered = torch.empty((selected_size,), dtype=first_batch.dtype)
+	filled = 0
+
+	for batch_values, perm_idxs in zip(value_batches, perm_batches):
+		values = batch_values.detach().cpu().reshape(-1)
+		slots = selection_lookup[perm_idxs]
+		mask = slots >= 0
+		if torch.any(mask):
+			reordered[slots[mask]] = values[mask]
+			filled += int(mask.sum().item())
+
+	if filled != selected_size:
+		raise RuntimeError(
+			f"Reordering mismatch for scalar outputs: expected {selected_size} rows, filled {filled}."
+		)
+
+	return reordered
+
+def reorder_activation_batches(activation_batches, perm_batches, selection_lookup, selected_size):
+	first_batch = activation_batches[0].detach().cpu()
+	first_collated = first_batch.reshape(first_batch.shape[0], -1)
+	reordered = torch.empty((selected_size, first_collated.shape[1]), dtype=first_collated.dtype)
+	filled = 0
+
+	for batch_activations, perm_idxs in zip(activation_batches, perm_batches):
+		collated = batch_activations.detach().cpu().reshape(batch_activations.shape[0], -1)
+		slots = selection_lookup[perm_idxs]
+		mask = slots >= 0
+		if torch.any(mask):
+			reordered[slots[mask]] = collated[mask]
+			filled += int(mask.sum().item())
+
+	if filled != selected_size:
+		raise RuntimeError(
+			f"Reordering mismatch for activations: expected {selected_size} rows, filled {filled}."
+		)
+
+	return reordered
+
+def clear_collected_tensors(collection):
+	if isinstance(collection, dict):
+		for value in collection.values():
+			if isinstance(value, list):
+				value.clear()
+		collection.clear()
+
 def save_inference_outputs(
 	epoch,
 	train_outputs,
@@ -482,57 +543,52 @@ def save_inference_outputs(
 		os.makedirs(tens_dir, exist_ok=True)
 		os.makedirs(labels_dir, exist_ok=True)
 		os.makedirs(idxs_dir, exist_ok=True)
-		
-		collected_losses = torch.cat(output['losses']).detach().cpu()
-		collected_labels = torch.cat(output['labels']).detach().cpu()
-		collected_preds = torch.cat(output['predicted']).detach().cpu()
-		collected_perm_indices = torch.cat(output['perm_indices']).cpu().to(dtype=torch.int64)
-		
-		# The perm_indices tell us the dataset/permutation index (ds[0], ds[1], ds[2], ...)
-		# We need to reorder from shuffled collection order back to permutation order
-		reordered_losses = torch.zeros_like(collected_losses)
-		reordered_labels = torch.zeros_like(collected_labels)
-		reordered_preds = torch.zeros_like(collected_preds)
-		
-		reordered_losses[collected_perm_indices] = collected_losses
-		reordered_labels[collected_perm_indices] = collected_labels
-		reordered_preds[collected_perm_indices] = collected_preds
+
+		total_examples = get_total_examples(output['perm_indices'])
+		perm_batches = [idx.detach().cpu().to(dtype=torch.int64).reshape(-1) for idx in output['perm_indices']]
+
+		all_positions, full_selection_lookup = build_selection_lookup(total_examples)
+		reordered_labels_full = reorder_scalar_batches(
+			output['labels'],
+			perm_batches,
+			full_selection_lookup,
+			all_positions.numel(),
+		)
 
 		selected_positions = fixed_indices_by_split.get(split)
 		if ds_subsample is not None and selected_positions is None:
-			selected_positions = build_fixed_balanced_indices(reordered_labels, ds_subsample, split)
+			selected_positions = build_fixed_balanced_indices(reordered_labels_full, ds_subsample, split)
 			fixed_indices_by_split[split] = selected_positions
 
 		if selected_positions is not None:
 			selected_positions = selected_positions.to(dtype=torch.int64)
 			max_idx = int(selected_positions.max().item()) if selected_positions.numel() > 0 else -1
-			if max_idx >= reordered_losses.shape[0]:
+			if max_idx >= total_examples:
 				logger.warning(
 					f"Stored ds_subsample indices for split '{split}' are out of range for current outputs. Recomputing indices."
 				)
-				selected_positions = build_fixed_balanced_indices(reordered_labels, ds_subsample, split)
+				selected_positions = build_fixed_balanced_indices(reordered_labels_full, ds_subsample, split)
 				fixed_indices_by_split[split] = selected_positions
 
-		if selected_positions is not None:
-			reordered_losses = reordered_losses[selected_positions]
-			reordered_labels = reordered_labels[selected_positions]
-			reordered_preds = reordered_preds[selected_positions]
+		selected_perm_indices, selection_lookup = build_selection_lookup(total_examples, selected_positions)
+		selected_size = selected_perm_indices.numel()
 
-		selected_perm_indices = selected_positions if selected_positions is not None else torch.arange(
-			reordered_losses.shape[0], dtype=torch.int64
-		)
+		reordered_losses = reorder_scalar_batches(output['losses'], perm_batches, selection_lookup, selected_size)
+		reordered_labels = reordered_labels_full[selected_perm_indices]
+		reordered_preds = reorder_scalar_batches(output['predicted'], perm_batches, selection_lookup, selected_size)
 		
 		for tag, activations in collected_activations.items():
-			stacked = torch.cat(activations).detach().cpu()
-			collated = stacked.reshape(len(stacked), -1)
-			
-			reordered_activations = torch.zeros_like(collated)
-			reordered_activations[collected_perm_indices] = collated
-			if selected_positions is not None:
-				reordered_activations = reordered_activations[selected_positions]
+			reordered_activations = reorder_activation_batches(
+				activations,
+				perm_batches,
+				selection_lookup,
+				selected_size,
+			)
 			
 			logger.info(f'Saving activations for tag {tag}, shape: {reordered_activations.shape}')
 			torch.save(reordered_activations, os.path.join(tens_dir, f"a{tag}_e{epoch}.pt"))
+			del reordered_activations
+			gc.collect()
 		
 		# Convert to numpy for saving
 		collected_losses_np = reordered_losses.numpy().reshape(-1, 1).squeeze()
@@ -544,6 +600,17 @@ def save_inference_outputs(
 		np.savetxt(os.path.join(labels_dir, f"labels_e{epoch}.txt"), collected_labels_np, fmt='%d')
 		np.savetxt(os.path.join(preds_dir, f"predictions_e{epoch}.txt"), collected_preds_np, fmt='%d')
 		np.savetxt(os.path.join(idxs_dir, "selected_dataset_indices.txt"), selected_perm_indices_np, fmt='%d')
+
+		del perm_batches
+		del reordered_losses
+		del reordered_labels
+		del reordered_labels_full
+		del reordered_preds
+		del selected_perm_indices
+		del selection_lookup
+		del full_selection_lookup
+		del all_positions
+		gc.collect()
 	
 	write_output("train", train_outputs, train_activations)
 	write_output("val", val_outputs, val_activations)
@@ -552,16 +619,28 @@ def save_inference_outputs(
 	combined_outputs = {}
 	for key in ['losses', 'labels', 'predicted']:
 		combined_outputs[key] = train_outputs[key] + val_outputs[key]
-	train_size = int(torch.cat(train_outputs['losses']).shape[0])
+	train_size = get_total_examples(train_outputs['losses'])
 	train_perm_indices = [idx.to(dtype=torch.int64) for idx in train_outputs['perm_indices']]
 	val_perm_indices_offset = [idx.to(dtype=torch.int64) + train_size for idx in val_outputs['perm_indices']]
 	combined_outputs['perm_indices'] = train_perm_indices + val_perm_indices_offset
 	combined_activations = {tag: train_activations[tag] + val_activations[tag] for tag in train_activations}
 	write_output("trainUval", combined_outputs, combined_activations)
+	clear_collected_tensors(combined_outputs)
+	clear_collected_tensors(combined_activations)
+	gc.collect()
 	
 	logger.info(f'Inference outputs saved for epoch {epoch}')
 
-def do_run(cfg, device, tboard_base, checkpoints_base, inference_cfg, only_last_best=False):
+def do_run(
+	cfg,
+	device,
+	tboard_base,
+	checkpoints_base,
+	inference_cfg,
+	only_last_best=False,
+	start_checkpoint=None,
+	start_epoch=1,
+):
 	train_loader, test_loader = get_dataloaders(cfg)
 	num_classes = train_loader.dataset.num_classes
  
@@ -572,8 +651,37 @@ def do_run(cfg, device, tboard_base, checkpoints_base, inference_cfg, only_last_
 	criterion = nn.CrossEntropyLoss()
 	criterion_collect = nn.CrossEntropyLoss(reduction='none')
 	optimizer = make_optimizer(model, cfg)
+	checkpoint_data = None
+	checkpoint_epoch = None
+
+	if start_checkpoint is not None:
+		logger.info(f"Loading start checkpoint from: {start_checkpoint}")
+		checkpoint_data = torch.load(start_checkpoint, map_location=device)
+		model.load_state_dict(checkpoint_data['model_state_dict'])
+		if 'optimizer_state_dict' in checkpoint_data:
+			optimizer.load_state_dict(checkpoint_data['optimizer_state_dict'])
+		checkpoint_epoch = checkpoint_data.get('epoch')
+		if isinstance(checkpoint_epoch, int) and start_epoch != (checkpoint_epoch + 1):
+			raise ValueError(
+				f"Start epoch {start_epoch} does not match checkpoint epoch {checkpoint_epoch + 1}. "
+				f"Please set start_epoch={checkpoint_epoch + 1} to continue training from this checkpoint."
+			)
+		logger.info(
+			f"Loaded checkpoint epoch={checkpoint_data.get('epoch', 'unknown')} and resumed model/optimizer state."
+		)
 	
 	scheduler = make_lr_scheduler(optimizer, cfg)
+	if scheduler is not None:
+		if checkpoint_data is not None and 'scheduler_state_dict' in checkpoint_data:
+			scheduler.load_state_dict(checkpoint_data['scheduler_state_dict'])
+			logger.info("Restored scheduler state from checkpoint.")
+		elif start_epoch > 1:
+			logger.warning(
+				"No scheduler state found in checkpoint; fast-forwarding scheduler to align with start_epoch."
+			)
+			for _ in range(1, start_epoch):
+				scheduler.step()
+			logger.info(f"Scheduler fast-forwarded by {start_epoch - 1} steps.")
 
 	writer = SummaryWriter(tboard_base)
 
@@ -600,7 +708,7 @@ def do_run(cfg, device, tboard_base, checkpoints_base, inference_cfg, only_last_
 	ds_subsample = inference_cfg.get('ds_subsample', None)
 	fixed_ds_subsample_indices = {}
 
-	for epoch in range(1, epochs + 1):
+	for epoch in range(start_epoch, epochs + 1):
 		t0 = time.time()
 		logger.info(f'--- Epoch {epoch}/{epochs} ---')
 		
@@ -702,6 +810,18 @@ def do_run(cfg, device, tboard_base, checkpoints_base, inference_cfg, only_last_
 				)
 			except Exception as e:
 				logger.error(f'Error saving inference outputs for epoch {epoch}: {e}')
+			finally:
+				clear_collected_tensors(train_outputs)
+				clear_collected_tensors(val_outputs)
+				clear_collected_tensors(train_activations)
+				clear_collected_tensors(val_activations)
+				gc.collect()
+				post_save_mem = get_memory_usage(device)
+				logger.info(
+					f"Memory after inference save {epoch}: CPU RSS={post_save_mem['cpu_rss']}, "
+					f"CPU VMS={post_save_mem['cpu_vms']}, "
+					f"GPU allocated={post_save_mem.get('gpu_allocated', 'N/A')}"
+				)
 
 		# checkpoint
 		state = {
@@ -710,13 +830,15 @@ def do_run(cfg, device, tboard_base, checkpoints_base, inference_cfg, only_last_
 			'optimizer_state_dict': optimizer.state_dict(),
 			'cfg': cfg,
 		}
+		if scheduler is not None:
+			state['scheduler_state_dict'] = scheduler.state_dict()
   
-		if only_last_best:
-			if epoch == epochs:
-				save_checkpoint(state, ckpt_dir, epoch)
-		else:
-			save_checkpoint(state, ckpt_dir, epoch)
-
+		save_checkpoint(state, ckpt_dir, epoch)
+		if only_last_best and epoch > start_epoch:
+			try:
+				os.remove(os.path.join(ckpt_dir, f'checkpoint_e{epoch - 1}.pt'))
+			except FileNotFoundError:
+				pass
 
 		if val_acc > best_val_acc:
 			best_val_acc = val_acc
@@ -739,7 +861,12 @@ def main(argv=None):
 	parser.add_argument('--output_file', '-o', help='output file to log metrics to')
 	parser.add_argument('--tensorboard_dir', default=None, help='override tensorboard dir from config')
 	parser.add_argument('--checkpoint_dir', default=None, help='override checkpoint dir from config')
+	parser.add_argument('--start_checkpoint', default=None, help='checkpoint path to initialize model/optimizer state from')
+	parser.add_argument('--start_epoch', type=int, default=1, help='epoch number to start training loop from')
 	args = parser.parse_args(argv)
+
+	if args.start_epoch < 1:
+		raise ValueError(f"--start_epoch must be >= 1, got {args.start_epoch}")
 
 	with open(args.config, 'r') as f:
 		config = yaml.safe_load(f)
@@ -751,7 +878,9 @@ def main(argv=None):
 	log_formatter = Formatter('%(asctime)s - %(levelname)s - %(message)s')
 	
 	if args.output_file:
-		file_handler = FileHandler(args.output_file)
+		fname = os.path.splitext(args.output_file)[0]
+		log_filename = f"{fname}_{time.strftime('%Y%m%d_%H%M%S')}.log"
+		file_handler = FileHandler(log_filename, mode='w')
 		file_handler.setFormatter(log_formatter)
 		logger.addHandler(file_handler)
 		
@@ -813,7 +942,16 @@ def main(argv=None):
 		only_last_best = tcfg.get("only_last_best", False)
 
 		logger.info(f'\n=== Starting run: {name} ===')
-		do_run(tcfg, device, tb_dir, ckpt_dir, icfg, only_last_best=only_last_best)
+		do_run(
+			tcfg,
+			device,
+			tb_dir,
+			ckpt_dir,
+			icfg,
+			only_last_best=only_last_best,
+			start_checkpoint=args.start_checkpoint,
+			start_epoch=args.start_epoch,
+		)
 		logger.info(f'=== Finished run: {name} ===\n')
 
 
