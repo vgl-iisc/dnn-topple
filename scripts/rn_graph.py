@@ -51,7 +51,9 @@ def load_packed_vamana(file_path):
 
     return adj_matrix
 
-def compute_rn_graph(data: np.ndarray, complexity: int = 75, graph_degree: int = 60, num_threads: int = 1) -> nx.Graph:
+RNG_BASEDIR = "tmp_rng/"
+
+def compute_rn_graph(data: np.ndarray, complexity: int = 75, graph_degree: int = 60, num_threads: int = 1, prefix: str = "tmp") -> nx.Graph:
     """
     Computes the approx rngraph (vamana index) for the given data.
 
@@ -64,14 +66,27 @@ def compute_rn_graph(data: np.ndarray, complexity: int = 75, graph_degree: int =
         The graph degree parameter for the Vamana index. Higher values lead to better recall but slower query times.
     - num_threads: int
         The number of threads to use for building the index.
+    - prefix: str
+        A prefix for temporary files created during index building. This is useful to avoid conflicts when running multiple instances in parallel.
     """
 
-    shutil.rmtree("tmp", ignore_errors=True)
-    os.makedirs("tmp", exist_ok=True)
+    work_dir = os.path.join(RNG_BASEDIR, prefix)
 
-    dap.build_memory_index(data, index_prefix="tmp", distance_metric="l2", index_directory="tmp", complexity=complexity, graph_degree=graph_degree, num_threads=num_threads) # type: ignore
+    shutil.rmtree(work_dir, ignore_errors=True)
+    os.makedirs(work_dir, exist_ok=True)
 
-    adj = load_packed_vamana("tmp/tmp")
+    dap.build_memory_index(
+        data,
+        index_prefix=prefix,
+        distance_metric="l2",
+        index_directory=work_dir,
+        complexity=complexity,
+        graph_degree=graph_degree,
+        num_threads=num_threads,
+    )  # type: ignore
+
+    packed_graph_path = os.path.join(work_dir, prefix)
+    adj = load_packed_vamana(packed_graph_path)
     
     return nx.from_scipy_sparse_array(adj)
 

@@ -20,6 +20,7 @@ charts*
 # temporary output text files
 out*.txt
 *.log
+tmp*
 
 # vis out
 saved_states/state_*.pkl

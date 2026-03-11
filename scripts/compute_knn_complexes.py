@@ -20,6 +20,8 @@ from timeit import default_timer as timer
 import pickle
 import logging
 
+CPUS = cpu_count() - 4
+
 def save_name_txt(file, k, connected):
     return f"adj_{file[len('vectors_'):-4]}_{k}" + ("_connected" if connected else "")
 
@@ -46,7 +48,7 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
                 times[data.shape] = []
 
             if not complexes_dir.endswith("/") and data_dir.endswith("/"):
-                complexes_dir += '/"'
+                complexes_dir += '/'
 
             save_basepath = root.replace(data_dir, complexes_dir).replace(f"Tensors{os.sep}", f"")
             os.makedirs(save_basepath, exist_ok=True)
@@ -54,7 +56,11 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
             # if method == 'r':
             if method == 'r':
                 start = timer()
-                Gmax = compute_rn_graph(data, complexity=75, graph_degree=60, num_threads=1)
+                try:
+                    Gmax = compute_rn_graph(data, complexity=75, graph_degree=60, num_threads=1, prefix=str(id))
+                except Exception as e:
+                    log.error(f"{id}: Error computing RN graph for {tensor_path}: {e}")
+                    continue
             else:
                 start = timer()
                 Gmax = compute_knn_graph(data, n_neighbors=max_k)
@@ -131,7 +137,7 @@ def main():
 
         groups = []
 
-        N_groups = max(1, (cpu_count() // 2) - 1)
+        N_groups = max(1, CPUS)
         for i in range(N_groups):
             groups.append((i, data_dir, complexes_dir, root, tensor_files[i::N_groups], max_k, True, method))
 
