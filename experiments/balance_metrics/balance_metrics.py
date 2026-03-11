@@ -6,17 +6,17 @@ import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'scripts')))
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'vis')))
 
 from scripts.get_accuracies import process_file
 from scripts.chart_simplification_valleys import get_valley_vs_thresh
 import scripts.tree_metrics as tm
-import vis.experiment as exp
-import vis.basic_utils as vu
 
 from sklearn.linear_model import LinearRegression
 from lmfit.models import ExponentialModel
 import scipy.stats as stats
+
+from utils import rooted_tree_from_exp
+from experiment import Dataset, LossLandscapeExperiment, find_all_datasets, find_all_experiments
 
 import matplotlib.pyplot as plt
 from matplotlib.category import UnitData
@@ -550,7 +550,7 @@ def process_experiment(worker_id: int, experiment, data_dir: str, ct_dir: str, t
 				log.info(f"{worker_id}: Desired number of valleys {wanted_num_valleys} not found. Using maximum available: {wanted_num_valleys}")
 			thresh = fns[num_min.index(wanted_num_valleys)]
 		
-		tree = vu.rooted_tree_from_exp(experiment, thresh, data_dir, ct_dir)
+		tree = rooted_tree_from_exp(experiment, thresh, data_dir, ct_dir)
 		metrics = tm.compute_tree_imbalance_metrics(tree)
 
 		accuracy = process_file(paths["compiled_res"], experiment.epoch)
@@ -581,8 +581,8 @@ def main(datasets_dir: str, data_dir: str, ct_dir: str, output_path: str) -> Non
 	log_to_stderr(logging.INFO)
 	logger.info("Starting balance metrics computation")
 	
-	datasets = exp.find_all_datasets(datasets_dir)
-	experiments = exp.find_all_experiments(datasets, data_dir, ct_dir)
+	datasets = find_all_datasets(datasets_dir)
+	experiments = find_all_experiments(datasets, data_dir, ct_dir)
 	
 	experiments_list = list(experiments)
 	logger.info(f"Found {len(experiments_list)} experiments to process")
