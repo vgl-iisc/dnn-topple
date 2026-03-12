@@ -35,7 +35,7 @@ def get_valley_vs_thresh(tree_path: str):
     order, wts = load_order_and_wts(tree_path)
 
     type = ord(ct.MINIMUM)
-    fns, num_min, _ = simpl.getSimplificationPlot(order, wts, type)
+    fns, num_min, _ = simpl.getSimplificationPlot(order, wts)
 
     return fns, num_min
 

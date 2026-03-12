@@ -70,14 +70,23 @@ class RichFeature:
 		self.pred_accuracy: float = 0.0
 		
 
-def compute_arc_features(exp: LossLandscapeExperiment, simpl: float):        
-	topo = ct.TopologicalFeatures()
-	topo.loadData(exp.get_paths()["ctree"])
+def compute_arc_features(exp: LossLandscapeExperiment, simpl: float):
+    """
+    Compute rich features using the same pyct pipeline as the vis code path.
+    This populates feature size/coverage/majority metadata used as edge volume.
+    """
+    topo = ct.TopologicalFeatures()
+    topo.loadData(exp.get_paths()["ctree"])
 
-	data = topo.ctdata
-	features = [RichFeature(id, f, data) for id, f in enumerate(topo.getArcFeatures(-1, simpl)[0])]
+    data = topo.ctdata
+    partition = get_partition(exp)
+    labels = get_labels(exp)
+    preds = get_preds(exp)
+    class_sizes = [exp.dataset.class_size_by_split[exp.split][cls] for cls in exp.dataset.classes]
 
-	return features, data
+    features = ct.computeRichFeatures(topo, -1, simpl, partition, labels, preds, class_sizes)  # type: ignore
+
+    return features, data
 
 def make_arc_map(features: list[RichFeature]):
     arc_map = {}
@@ -195,3 +204,13 @@ def compute_tree_graph(exp: LossLandscapeExperiment, features: list[ct.RichFeatu
         nxg = full_graph
 
     return nxg
+
+def load_order_and_wts(tree_files: str) -> tuple[list[int], list[float]]:
+    with open(f"{tree_files}.order.dat", "r") as f:
+        no_simpl = int(f.readline().strip())
+        
+    with open(f"{tree_files}.order.bin", "rb") as file:
+        order = [int(f) for f in np.fromfile(file, dtype=np.uint32, count=no_simpl)]
+        wts = [float(f) for f in np.fromfile(file, dtype=np.float32, count=no_simpl)]
+
+    return order, wts

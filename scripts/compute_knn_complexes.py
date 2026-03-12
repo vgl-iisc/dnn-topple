@@ -20,7 +20,7 @@ from timeit import default_timer as timer
 import pickle
 import logging
 
-CPUS = cpu_count() - 4
+CPUS = 24
 
 def save_name_txt(file, k, connected):
     return f"adj_{file[len('vectors_'):-4]}_{k}" + ("_connected" if connected else "")
@@ -101,13 +101,19 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
         return times
 
 def main():
-    if len(argv) != 5:
-        print("Usage: python compute_knn_complexes.py <data_dir> <complexes_dir> <max_k> <r|k> (rng vs knn)")
+    if len(argv) < 5:
+        print("Usage: python compute_knn_complexes.py <data_dir> <complexes_dir> <max_k> <r|k> (rng vs knn) [ignore_splits]")
         return
+    
+    ignore_splits = []
+    if len(argv) >= 6:
+        ignore_splits = argv[5].split(",")
     
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(processName)s - %(levelname)s: %(message)s')
 
     log_to_stderr(logging.INFO)
+
+    logging.info(f"Starting k-NN complex computation with ignore_splits={ignore_splits}")
 
     data_dir = argv[1]
     complexes_dir = argv[2]
@@ -122,6 +128,17 @@ def main():
     for root, dirs, files in os.walk(data_dir):
         logging.info(f"Processing directory: {root}")
         if not "Tensors" in root:
+            continue
+        
+        skip = False
+        for split in ignore_splits:
+            root_nice = root.replace("\\", "/")
+            if split in root_nice.split("/"):
+                skip = True
+                logging.info(f"Skipping {root} due to ignore_splits")
+                break
+        
+        if skip:
             continue
 
         tensor_files = [f for f in files if f.startswith("vectors_") and f.endswith(".txt")]

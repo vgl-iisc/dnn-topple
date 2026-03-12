@@ -26,7 +26,7 @@ import logging
 
 METRICS = ["average_branching_factor", "colless_index", "sackin_index", "total_volume", "missing_colless_frac"]
 # THRESH_SELECTION = "valley=classes"
-THRESH_SELECTION = 0.0
+THRESH_SELECTION = 1e-6
 
 # Configure logging at module level for multiprocessing
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(processName)s - %(levelname)s: %(message)s')
@@ -529,7 +529,7 @@ def process_experiment(worker_id: int, experiment, data_dir: str, ct_dir: str, t
 	log.info(f"{worker_id}: Processing experiment: {experiment}")
 
 	try:
-		paths = experiment.get_paths(data_dir, ct_dir)
+		paths = experiment.get_paths()
 		tree_path = paths["ctree"]
 
 		fns, num_min = get_valley_vs_thresh(tree_path)

@@ -19,6 +19,8 @@ import logging
 
 from contour_tree import process_contour_trees
 
+CPUS = 24
+
 def main():
     if len(argv) != 5:
         print("Usage: python compute_contour_trees.py <data_dir> <complexes_dir> <ct_dir> <type: c | s | j (contour, split, or join)>")
@@ -77,7 +79,7 @@ def main():
         return
     
     # Distribute tasks across workers
-    N_workers = max(1, cpu_count() - 4)
+    N_workers = max(1, CPUS)
     task_groups = []
     
     for i in range(N_workers):

@@ -1,6 +1,6 @@
+import os
 from glob import glob
 import pandas as pd
-import os
 
 class Dataset:
     def __init__(self, name: str, path: str, classes_path: str, splits: list[str]) -> None:
@@ -9,7 +9,7 @@ class Dataset:
         self.classes_path = classes_path
         self.splits = splits
         
-        self.size_by_split = {split: 0 for split in splits}
+        self.size_by_split = {split: 0 for split in splits}  
         self.classes = pd.read_csv(classes_path, header=None).iloc[0].to_list()
             
         self.labels_by_split = {split: [] for split in splits}
@@ -60,7 +60,7 @@ class LossLandscapeExperiment:
         self.layer_tag = f"{layer}"
         self.pretty_layer = self.layer_tag[1:]
         self.epoch_tag = f"e{epoch}"
-        self.model_data = f"{self.model}_{self.dataset.name}" if self.model != self.dataset.name else self.dataset.name
+        self.model_data = f"{self.model}_{self.dataset.name}"
         
         self.landscape_dir = landscape_dir
         self.ct_dir = ct_dir
@@ -79,7 +79,9 @@ class LossLandscapeExperiment:
             "ctree": os.path.join(ct_dir, f"{self.model_data}", self.split, f"ctree_{self.layer_tag}_{self.epoch_tag}_{self.k}"),
             "losses": os.path.join(data_dir, f"{self.model_data}", "Losses", self.split, f"losses_{self.epoch_tag}.txt"),
             "tensors": os.path.join(data_dir, f"{self.model_data}", "Tensors", self.split, f"vectors_{self.layer_tag}_{self.epoch_tag}.txt"),
-       }
+            "predictions": os.path.join(data_dir, f"{self.model_data}", "Predictions", self.split, f"predictions_{self.epoch_tag}.txt"),
+            "compiled_res": os.path.join(data_dir, f"{self.model_data}", "compiled_results.csv"),
+        }
         
         return self.paths 
     
@@ -153,12 +155,15 @@ def find_all_experiments(datasets: dict[str, Dataset], data_dir: str, ct_dir: st
 
         assert len(parts) == 2
 
-        dataset_name, split = parts
+        model_data, split = parts
+        parts = model_data.split("_")
+        model = parts[0]
+        dataset_name = "_".join(parts[1:])
         
-        # print(f"Dataset: {dataset_name}, Split: {split}")
+        # print(f"Model: {model}, Dataset: {dataset_name}, Split: {split}")
 
         if dataset_name not in datasets:
-            print(f"Warning: Dataset {dataset_name} not found")
+            print(f"Warning: Dataset {dataset_name} not found for model {model}")
             continue
 
         dataset = datasets[dataset_name]
@@ -172,7 +177,7 @@ def find_all_experiments(datasets: dict[str, Dataset], data_dir: str, ct_dir: st
             epoch = int(epoch[1:])
             k = int(k.split(os.path.extsep)[0])
             
-            experiment = LossLandscapeExperiment(dataset, split, dataset_name, k, epoch, layer, data_dir, ct_dir)
+            experiment = LossLandscapeExperiment(dataset, split, model, k, epoch, layer, data_dir, ct_dir)
 
             if experiment.validate_paths():
                 experiments.append(experiment)
