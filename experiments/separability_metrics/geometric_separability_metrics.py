@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import logging
 from dataclasses import dataclass
 from multiprocessing import Pool, cpu_count, log_to_stderr
@@ -20,6 +21,7 @@ from experiments.balance_metrics.experiment import find_all_datasets
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(processName)s - %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+CPUS = 36
 
 @dataclass
 class TensorExperiment:
@@ -46,7 +48,7 @@ def parse_tensor_metadata(data_dir: str, tensor_path: str) -> TensorExperiment:
 	split = parts[tensors_idx + 1]
 	filename = os.path.basename(tensor_path)
 
-	match = re.match(r"^vectors_(.+)_e(\d+)\.(txt|pt|npy|npz)$", filename)
+	match = re.match(r"^(.+)_e(\d+)\.(txt|pt|npy|npz)$", filename)
 	if not match:
 		raise ValueError(f"Unexpected tensor filename format: {filename}")
 
@@ -81,8 +83,6 @@ def find_all_tensor_files(data_dir: str) -> list[str]:
 		for file_name in files:
 			base, ext = os.path.splitext(file_name)
 			if ext.lower() not in valid_exts:
-				continue
-			if not base.startswith("vectors_"):
 				continue
 			tensor_files.append(os.path.join(root, file_name))
 
@@ -233,26 +233,26 @@ def compute_separability_metrics(
 		centroid_mean = np.nan
 		centroid_min = np.nan
 
-	k_eff = min(max(1, k_neighbors), max(1, X.shape[0] - 1))
-	if X.shape[0] <= 1:
-		purity = np.nan
-		knn_acc = np.nan
-	else:
-		nn = NearestNeighbors(n_neighbors=k_eff + 1, metric="euclidean")
-		nn.fit(X)
-		indices = np.asarray(nn.kneighbors(X, return_distance=False))[:, 1:]
-		neighbor_labels = y[indices]
-		purity = float(np.mean(np.mean(neighbor_labels == y[:, None], axis=1)))
+	# k_eff = min(max(1, k_neighbors), max(1, X.shape[0] - 1))
+	# if X.shape[0] <= 1:
+	# 	purity = np.nan
+	# 	knn_acc = np.nan
+	# else:
+	# 	nn = NearestNeighbors(n_neighbors=k_eff + 1, metric="euclidean")
+	# 	nn.fit(X)
+	# 	indices = np.asarray(nn.kneighbors(X, return_distance=False))[:, 1:]
+	# 	neighbor_labels = y[indices]
+	# 	purity = float(np.mean(np.mean(neighbor_labels == y[:, None], axis=1)))
 
-		clf = KNeighborsClassifier(n_neighbors=k_eff, metric="euclidean")
-		correct = 0
-		for i in range(X.shape[0]):
-			mask = np.ones(X.shape[0], dtype=bool)
-			mask[i] = False
-			clf.fit(X[mask], y[mask])
-			pred = clf.predict(X[i].reshape(1, -1))[0]
-			correct += int(pred == y[i])
-		knn_acc = float(correct / X.shape[0])
+	# 	clf = KNeighborsClassifier(n_neighbors=k_eff, metric="euclidean")
+	# 	correct = 0
+	# 	for i in range(X.shape[0]):
+	# 		mask = np.ones(X.shape[0], dtype=bool)
+	# 		mask[i] = False
+	# 		clf.fit(X[mask], y[mask])
+	# 		pred = clf.predict(X[i].reshape(1, -1))[0]
+	# 		correct += int(pred == y[i])
+	# 	knn_acc = float(correct / X.shape[0])
 
 	return {
 		"num_points": int(X.shape[0]),
@@ -262,8 +262,8 @@ def compute_separability_metrics(
 		"intra_inter_distance_ratio": ratio,
 		"centroid_mean_separation": centroid_mean,
 		"centroid_min_separation": centroid_min,
-		"neighborhood_purity": purity,
-		"knn_accuracy": knn_acc,
+		"neighborhood_purity": np.nan,
+		"knn_accuracy": np.nan,
 	}
 
 
@@ -276,6 +276,7 @@ def process_tensor_file(
 	max_intra_pairs_per_class: int,
 	max_inter_pairs: int,
 	random_seed: int,
+	per_file_log_dir: str | None = None,
 ) -> dict:
 	log = logging.getLogger(__name__)
 	log.info(f"{worker_id}: Processing tensor file {tensor_path}")
@@ -319,6 +320,12 @@ def process_tensor_file(
 		**metrics,
 	}
 
+	if per_file_log_dir is not None:
+		safe_name = os.path.relpath(tensor_path, data_dir).replace(os.sep, "__").replace("/", "__")
+		log_csv = os.path.join(per_file_log_dir, f"{safe_name}.csv")
+		pd.DataFrame([result]).to_csv(log_csv, index=False)
+		log.info(f"{worker_id}: Logged result to {log_csv}")
+
 	log.info(f"{worker_id}: Completed tensor file {tensor_path}")
 	return result
 
@@ -342,7 +349,12 @@ def main(
 		logger.warning("No tensor files found")
 		return
 
-	N_workers = max(1, cpu_count() - 4)
+	N_workers = max(1, CPUS)
+
+	output_dir = os.path.dirname(os.path.abspath(output_path))
+	per_file_log_dir = os.path.join(output_dir, "per_file_logs")
+	os.makedirs(per_file_log_dir, exist_ok=True)
+	logger.info(f"Per-file logs will be written to {per_file_log_dir}")
 
 	task_args = []
 	for i in range(N_workers):
@@ -358,6 +370,7 @@ def main(
 					max_intra_pairs_per_class,
 					max_inter_pairs,
 					random_seed,
+					per_file_log_dir,
 				)
 			)
 
@@ -375,6 +388,9 @@ def main(
 	os.makedirs(os.path.dirname(output_path), exist_ok=True) if os.path.dirname(output_path) else None
 	results_df.to_csv(output_path, index=False)
 	logger.info(f"Saved separability metrics to {output_path}")
+
+	shutil.rmtree(per_file_log_dir, ignore_errors=True)
+	logger.info(f"Removed per-file log directory {per_file_log_dir}")
 
 
 if __name__ == "__main__":
@@ -399,7 +415,7 @@ if __name__ == "__main__":
 		default=100000,
 		help="Maximum sampled inter-class pairs for distance estimation.",
 	)
-	parser.add_argument("--seed", type=int, default=42, help="Random seed for pair sampling.")
+	parser.add_argument("--seed", type=int, default=124234, help="Random seed for pair sampling.")
 
 	args = parser.parse_args()
 
