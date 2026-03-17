@@ -5,11 +5,14 @@ import logging
 from dataclasses import dataclass
 from multiprocessing import Pool, cpu_count, log_to_stderr
 
+import glob
+from collections import Counter
+
+import networkx as nx
 import numpy as np
 import pandas as pd
 import torch
 from sklearn.metrics import pairwise_distances
-from sklearn.neighbors import KNeighborsClassifier, NearestNeighbors
 
 import sys
 
@@ -21,7 +24,7 @@ from experiments.balance_metrics.experiment import find_all_datasets
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(processName)s - %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-CPUS = 36
+CPUS = 24
 
 @dataclass
 class TensorExperiment:
@@ -204,67 +207,100 @@ def compute_separability_metrics(
 			"knn_accuracy": np.nan,
 		}
 
-	rng = np.random.default_rng(random_seed)
+	# rng = np.random.default_rng(random_seed)
 	classes = np.unique(y)
 
-	intra = _sample_intra_class_distances(X, y, max_pairs_per_class=max_intra_pairs_per_class, rng=rng)
-	inter = _sample_inter_class_distances(X, y, max_pairs=max_inter_pairs, rng=rng)
+	# intra = _sample_intra_class_distances(X, y, max_pairs_per_class=max_intra_pairs_per_class, rng=rng)
+	# inter = _sample_inter_class_distances(X, y, max_pairs=max_inter_pairs, rng=rng)
 
-	intra_mean = float(np.mean(intra)) if intra.size > 0 else np.nan
-	inter_mean = float(np.mean(inter)) if inter.size > 0 else np.nan
+	# intra_mean = float(np.mean(intra)) if intra.size > 0 else np.nan
+	# inter_mean = float(np.mean(inter)) if inter.size > 0 else np.nan
 
-	if np.isnan(intra_mean) or np.isnan(inter_mean) or inter_mean == 0.0:
-		ratio = np.nan
-	else:
-		ratio = intra_mean / inter_mean
-
-	centroids = []
-	for cls in classes:
-		centroids.append(X[y == cls].mean(axis=0))
-	centroids = np.asarray(centroids)
-
-	if centroids.shape[0] >= 2:
-		centroid_d = pairwise_distances(centroids)
-		i_upper = np.triu_indices(centroid_d.shape[0], k=1)
-		centroid_vals = centroid_d[i_upper]
-		centroid_mean = float(np.mean(centroid_vals))
-		centroid_min = float(np.min(centroid_vals))
-	else:
-		centroid_mean = np.nan
-		centroid_min = np.nan
-
-	# k_eff = min(max(1, k_neighbors), max(1, X.shape[0] - 1))
-	# if X.shape[0] <= 1:
-	# 	purity = np.nan
-	# 	knn_acc = np.nan
+	# if np.isnan(intra_mean) or np.isnan(inter_mean) or inter_mean == 0.0:
+	# 	ratio = np.nan
 	# else:
-	# 	nn = NearestNeighbors(n_neighbors=k_eff + 1, metric="euclidean")
-	# 	nn.fit(X)
-	# 	indices = np.asarray(nn.kneighbors(X, return_distance=False))[:, 1:]
-	# 	neighbor_labels = y[indices]
-	# 	purity = float(np.mean(np.mean(neighbor_labels == y[:, None], axis=1)))
+	# 	ratio = intra_mean / inter_mean
 
-	# 	clf = KNeighborsClassifier(n_neighbors=k_eff, metric="euclidean")
-	# 	correct = 0
-	# 	for i in range(X.shape[0]):
-	# 		mask = np.ones(X.shape[0], dtype=bool)
-	# 		mask[i] = False
-	# 		clf.fit(X[mask], y[mask])
-	# 		pred = clf.predict(X[i].reshape(1, -1))[0]
-	# 		correct += int(pred == y[i])
-	# 	knn_acc = float(correct / X.shape[0])
+	# centroids = []
+	# for cls in classes:
+	# 	centroids.append(X[y == cls].mean(axis=0))
+	# centroids = np.asarray(centroids)
+
+	# if centroids.shape[0] >= 2:
+	# 	centroid_d = pairwise_distances(centroids)
+	# 	i_upper = np.triu_indices(centroid_d.shape[0], k=1)
+	# 	centroid_vals = centroid_d[i_upper]
+	# 	centroid_mean = float(np.mean(centroid_vals))
+	# 	centroid_min = float(np.min(centroid_vals))
+	# else:
+	# 	centroid_mean = np.nan
+	# 	centroid_min = np.nan
+
+	purity = np.nan
+	knn_acc = np.nan
 
 	return {
 		"num_points": int(X.shape[0]),
 		"num_classes": int(len(classes)),
-		"intra_class_mean_distance": intra_mean,
-		"inter_class_mean_distance": inter_mean,
-		"intra_inter_distance_ratio": ratio,
-		"centroid_mean_separation": centroid_mean,
-		"centroid_min_separation": centroid_min,
-		"neighborhood_purity": np.nan,
-		"knn_accuracy": np.nan,
+		"intra_class_mean_distance": np.nan,
+		"inter_class_mean_distance": np.nan,
+		"intra_inter_distance_ratio": np.nan,
+		"centroid_mean_separation": np.nan,
+		"centroid_min_separation": np.nan,
+		"neighborhood_purity": purity,
+		"knn_accuracy": knn_acc,
 	}
+
+
+def find_knn_dirs(knn_graphs_dir: str) -> dict[int, str]:
+	"""Scan knn_graphs_dir for knns_cross_epoch_* subdirs and return {k: path}."""
+	k_dirs: dict[int, str] = {}
+	for entry in os.scandir(knn_graphs_dir):
+		if entry.is_dir():
+			m = re.match(r"knns_cross_epoch_(\d+)$", entry.name)
+			if m:
+				k_dirs[int(m.group(1))] = entry.path
+	return k_dirs
+
+
+def find_adj_file(knn_dir: str, model: str, dataset: str, split: str, epoch: int, k: int):
+	"""Return the adjacency list file path for model/dataset/split/epoch/k, or None if not found."""
+	folder = os.path.join(knn_dir, f"{model}_{dataset}", split)
+	search_path = os.path.join(folder, f"adj_a*_e{epoch}_{k}_connected.txt")
+	if not os.path.isdir(folder):
+		return (None, search_path)
+	matches = glob.glob(os.path.join(folder, f"adj_a*_e{epoch}_{k}_connected.txt"))
+	return (matches[0], search_path) if matches else (None, search_path)
+
+
+def compute_knn_metrics_from_graph(adj_file: str, labels: np.ndarray) -> tuple[float, float]:
+	"""
+	Compute neighbourhood purity and knn accuracy from a pre-built KNN adjacency list.
+	Nodes are expected to be integer string indices matching positions in `labels`.
+	Returns (neighbourhood_purity, knn_accuracy).
+	"""
+	G = nx.read_adjlist(adj_file)
+	n = labels.shape[0]
+	purity_scores: list[float] = []
+	correct = 0
+	total = 0
+	logger.info(f"Computing KNN metrics from graph {adj_file} with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges")
+	for node in G.nodes():
+		idx = int(node)
+		if idx >= n:
+			continue
+		neighbors = [int(nb) for nb in G.neighbors(node) if int(nb) < n]
+		if not neighbors:
+			continue
+		neighbor_labels = labels[neighbors]
+		true_label = int(labels[idx])
+		purity_scores.append(float(np.mean(neighbor_labels == true_label)))
+		pred = Counter(neighbor_labels.tolist()).most_common(1)[0][0]
+		correct += int(pred == true_label)
+		total += 1
+	purity = float(np.mean(purity_scores)) if purity_scores else np.nan
+	knn_acc = float(correct / total) if total > 0 else np.nan
+	return purity, knn_acc
 
 
 def process_tensor_file(
@@ -276,6 +312,7 @@ def process_tensor_file(
 	max_intra_pairs_per_class: int,
 	max_inter_pairs: int,
 	random_seed: int,
+	k_dirs: dict[int, str] | None = None,
 	per_file_log_dir: str | None = None,
 ) -> dict:
 	log = logging.getLogger(__name__)
@@ -320,6 +357,19 @@ def process_tensor_file(
 		**metrics,
 	}
 
+	if k_dirs is not None:
+		for k, knn_dir in sorted(k_dirs.items()):
+			adj_file, search_path = find_adj_file(knn_dir, meta.model, meta.dataset, meta.split, meta.epoch, k)
+
+			if adj_file is None:
+				log.warning(f"{worker_id}: No adj file for {meta.model}_{meta.dataset}/{meta.split} epoch={meta.epoch} k={k} (searched {search_path})")
+				result[f"neighbourhood_purity_{k}"] = np.nan
+				result[f"knn_accuracy_{k}"] = np.nan
+			else:
+				purity, acc = compute_knn_metrics_from_graph(adj_file, labels)
+				result[f"neighbourhood_purity_{k}"] = purity
+				result[f"knn_accuracy_{k}"] = acc
+
 	if per_file_log_dir is not None:
 		safe_name = os.path.relpath(tensor_path, data_dir).replace(os.sep, "__").replace("/", "__")
 		log_csv = os.path.join(per_file_log_dir, f"{safe_name}.csv")
@@ -338,6 +388,7 @@ def main(
 	max_intra_pairs_per_class: int = 10000,
 	max_inter_pairs: int = 100000,
 	random_seed: int = 42,
+	knn_graphs_dir: str | None = None,
 ) -> None:
 	log_to_stderr(logging.INFO)
 	logger.info("Starting geometric separability computation")
@@ -350,6 +401,10 @@ def main(
 		return
 
 	N_workers = max(1, CPUS)
+
+	k_dirs = find_knn_dirs(knn_graphs_dir) if knn_graphs_dir is not None else None
+	if k_dirs is not None:
+		logger.info(f"Found KNN graph dirs for k values: {sorted(k_dirs.keys())}")
 
 	output_dir = os.path.dirname(os.path.abspath(output_path))
 	per_file_log_dir = os.path.join(output_dir, "per_file_logs")
@@ -370,6 +425,7 @@ def main(
 					max_intra_pairs_per_class,
 					max_inter_pairs,
 					random_seed,
+					k_dirs,
 					per_file_log_dir,
 				)
 			)
@@ -402,7 +458,6 @@ if __name__ == "__main__":
 	parser.add_argument("datasets_dir", type=str, help="Path to datasets directory.")
 	parser.add_argument("data_dir", type=str, help="Path to landscape data directory containing Tensors folders.")
 	parser.add_argument("output_path", type=str, help="Path to output CSV file.")
-	parser.add_argument("--k_neighbors", type=int, default=5, help="k for neighborhood purity and k-NN accuracy.")
 	parser.add_argument(
 		"--max_intra_pairs_per_class",
 		type=int,
@@ -416,6 +471,12 @@ if __name__ == "__main__":
 		help="Maximum sampled inter-class pairs for distance estimation.",
 	)
 	parser.add_argument("--seed", type=int, default=124234, help="Random seed for pair sampling.")
+	parser.add_argument(
+		"--knn_graphs_dir",
+		type=str,
+		default=None,
+		help="Parent directory containing knns_cross_epoch_* subdirs with pre-built KNN adjacency lists.",
+	)
 
 	args = parser.parse_args()
 
@@ -423,8 +484,8 @@ if __name__ == "__main__":
 		datasets_dir=args.datasets_dir,
 		data_dir=args.data_dir,
 		output_path=args.output_path,
-		k_neighbors=args.k_neighbors,
 		max_intra_pairs_per_class=args.max_intra_pairs_per_class,
 		max_inter_pairs=args.max_inter_pairs,
 		random_seed=args.seed,
+		knn_graphs_dir=args.knn_graphs_dir,
 	)

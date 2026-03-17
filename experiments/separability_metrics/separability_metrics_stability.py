@@ -70,10 +70,23 @@ def attach_classification_accuracies(metrics_df: pd.DataFrame, data_dir: str) ->
 	return df
 
 
+def _get_all_metrics(data: pd.DataFrame) -> list[str]:
+	"""Return static separability metrics present in the dataframe plus any knn-graph derived columns.
+	Excludes columns that are entirely NaN (e.g. disabled computations).
+	"""
+	metrics = [m for m in SEPARABILITY_METRICS if m in data.columns and data[m].notna().any()]
+	for col in sorted(data.columns):
+		if col.startswith("neighbourhood_purity_") or col.startswith("knn_accuracy_"):
+			if data[col].notna().any():
+				metrics.append(col)
+	return metrics
+
+
 def compute_correlations(data: pd.DataFrame, out_csv: str | None = None) -> pd.DataFrame:
 	correlations = {}
+	metrics = _get_all_metrics(data)
 
-	for metric in SEPARABILITY_METRICS:
+	for metric in metrics:
 		train_pearson = data["train_acc"].corr(data[metric])
 		val_pearson = data["val_acc"].corr(data[metric])
 		train_spearman = data["train_acc"].corr(data[metric], method="spearman")
@@ -88,7 +101,7 @@ def compute_correlations(data: pd.DataFrame, out_csv: str | None = None) -> pd.D
 		}
 
 	for dataset_name, group in data.groupby("dataset"):
-		for metric in SEPARABILITY_METRICS:
+		for metric in metrics:
 			correlations[f"{dataset_name}_{metric}"] = {
 				"n": len(group),
 				"train_pearson": group["train_acc"].corr(group[metric]),
@@ -98,7 +111,7 @@ def compute_correlations(data: pd.DataFrame, out_csv: str | None = None) -> pd.D
 			}
 
 	for model_name, group in data.groupby("model"):
-		for metric in SEPARABILITY_METRICS:
+		for metric in metrics:
 			correlations[f"{model_name}_{metric}"] = {
 				"n": len(group),
 				"train_pearson": group["train_acc"].corr(group[metric]),
@@ -108,7 +121,7 @@ def compute_correlations(data: pd.DataFrame, out_csv: str | None = None) -> pd.D
 			}
 
 	for (dataset_name, model_name), group in data.groupby(["dataset", "model"]):
-		for metric in SEPARABILITY_METRICS:
+		for metric in metrics:
 			correlations[f"{dataset_name}_{model_name}_{metric}"] = {
 				"n": len(group),
 				"train_pearson": group["train_acc"].corr(group[metric]),
@@ -126,15 +139,15 @@ def compute_correlations(data: pd.DataFrame, out_csv: str | None = None) -> pd.D
 	return corr_df
 
 
-def run_for_k(
+def run_separability_metrics(
 	python_executable: str,
 	datasets_dir: str,
 	data_dir: str,
-	k: int,
 	output_csv: str,
 	max_intra_pairs_per_class: int,
 	max_inter_pairs: int,
 	seed: int,
+	knn_graphs_dir: str | None = None,
 ) -> None:
 	cmd = [
 		python_executable,
@@ -142,8 +155,6 @@ def run_for_k(
 		datasets_dir,
 		data_dir,
 		output_csv,
-		"--k_neighbors",
-		str(k),
 		"--max_intra_pairs_per_class",
 		str(max_intra_pairs_per_class),
 		"--max_inter_pairs",
@@ -151,21 +162,28 @@ def run_for_k(
 		"--seed",
 		str(seed),
 	]
-	print(f"Running separability metrics for k={k}...")
+	if knn_graphs_dir is not None:
+		cmd += ["--knn_graphs_dir", knn_graphs_dir]
+	print("Running separability metrics...")
 	subprocess.run(cmd, check=True)
 
 
 
 def main() -> None:
 	parser = argparse.ArgumentParser(
-		description="Run geometric separability metrics over multiple k values and save metric-accuracy correlations."
+		description="Run geometric separability metrics and save metric-accuracy correlations."
 	)
 	parser.add_argument("datasets_dir", type=str, help="Path to datasets directory.")
 	parser.add_argument("data_dir", type=str, help="Path to landscape data directory.")
-	parser.add_argument("output_dir", type=str, help="Directory where per-k CSV outputs are saved.")
-	parser.add_argument("--k_values", type=int, nargs="+", required=True, help="k values to evaluate.")
-	parser.add_argument("--output_prefix", type=str, default="geometric_separability", help="Prefix for per-k output files.")
+	parser.add_argument("output_dir", type=str, help="Directory where CSV outputs are saved.")
+	parser.add_argument("--output_prefix", type=str, default="geometric_separability", help="Prefix for output files.")
 	parser.add_argument("--python_executable", type=str, default=sys.executable, help="Python executable used to launch metric script.")
+	parser.add_argument(
+		"--knn_graphs_dir",
+		type=str,
+		default=None,
+		help="Parent directory containing knns_cross_epoch_* subdirs with pre-built KNN adjacency lists.",
+	)
 	parser.add_argument("--max_intra_pairs_per_class", type=int, default=10000)
 	parser.add_argument("--max_inter_pairs", type=int, default=100000)
 	parser.add_argument("--seed", type=int, default=42)
@@ -174,27 +192,26 @@ def main() -> None:
 
 	os.makedirs(args.output_dir, exist_ok=True)
 
-	for k in args.k_values:
-		metrics_csv = os.path.join(args.output_dir, f"{args.output_prefix}_k{k}.csv")
-		run_for_k(
-			python_executable=args.python_executable,
-			datasets_dir=args.datasets_dir,
-			data_dir=args.data_dir,
-			k=k,
-			output_csv=metrics_csv,
-			max_intra_pairs_per_class=args.max_intra_pairs_per_class,
-			max_inter_pairs=args.max_inter_pairs,
-			seed=args.seed,
-		)
+	metrics_csv = os.path.join(args.output_dir, f"{args.output_prefix}.csv")
+	run_separability_metrics(
+		python_executable=args.python_executable,
+		datasets_dir=args.datasets_dir,
+		data_dir=args.data_dir,
+		output_csv=metrics_csv,
+		max_intra_pairs_per_class=args.max_intra_pairs_per_class,
+		max_inter_pairs=args.max_inter_pairs,
+		seed=args.seed,
+		knn_graphs_dir=args.knn_graphs_dir,
+	)
 
-		df = pd.read_csv(metrics_csv)
-		df = attach_classification_accuracies(df, args.data_dir)
-		df.to_csv(metrics_csv, index=False)
+	df = pd.read_csv(metrics_csv)
+	df = attach_classification_accuracies(df, args.data_dir)
+	df.to_csv(metrics_csv, index=False)
 
-		corrs_csv = metrics_csv.replace(".csv", "_corrs.csv")
-		compute_correlations(df, out_csv=corrs_csv)
+	corrs_csv = metrics_csv.replace(".csv", "_corrs.csv")
+	compute_correlations(df, out_csv=corrs_csv)
 
-		print(f"Saved metrics to {metrics_csv}")
+	print(f"Saved metrics to {metrics_csv}")
 
 
 if __name__ == "__main__":
