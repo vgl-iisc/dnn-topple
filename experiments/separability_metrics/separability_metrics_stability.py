@@ -35,8 +35,12 @@ def _extract_split_acc(accuracy_df: pd.DataFrame, split_name: str) -> float:
 	return float(matches["accuracy"].iloc[0])
 
 
-def _compiled_results_path(data_dir: str, model: str, dataset: str) -> str:
-	return os.path.join(data_dir, f"{model}_{dataset}", "compiled_results.csv")
+def _compiled_results_candidates(data_dir: str, model: str, dataset: str, randomness: float) -> list[str]:
+	candidates = []
+	if randomness > 0.0:
+		candidates.append(os.path.join(data_dir, f"{model}_{dataset}-r{randomness:g}", "compiled_results.csv"))
+	candidates.append(os.path.join(data_dir, f"{model}_{dataset}", "compiled_results.csv"))
+	return candidates
 
 
 def attach_classification_accuracies(metrics_df: pd.DataFrame, data_dir: str) -> pd.DataFrame:
@@ -45,15 +49,23 @@ def attach_classification_accuracies(metrics_df: pd.DataFrame, data_dir: str) ->
 	val_accs = []
 	cache = {}
 
-	for row in df.itertuples(index=False):
-		cache_key = (row.model, row.dataset, int(row.epoch))
+	for _, row in df.iterrows():
+		model = str(row.get("model", ""))
+		dataset = str(row.get("dataset", ""))
+		epoch = int(float(row.get("epoch", 0)))
+		randomness = float(row.get("randomness", 0.0))
+		cache_key = (model, dataset, randomness, epoch)
 		if cache_key not in cache:
-			compiled_res = _compiled_results_path(data_dir, row.model, row.dataset)
-			if not os.path.exists(compiled_res):
+			compiled_res = None
+			for candidate in _compiled_results_candidates(data_dir, model, dataset, randomness):
+				if os.path.exists(candidate):
+					compiled_res = candidate
+					break
+			if compiled_res is None:
 				cache[cache_key] = (np.nan, np.nan)
 			else:
 				try:
-					acc_df = process_file(compiled_res, int(row.epoch))
+					acc_df = process_file(compiled_res, epoch)
 					cache[cache_key] = (
 						_extract_split_acc(acc_df, "Train"),
 						_extract_split_acc(acc_df, "Val"),
@@ -82,53 +94,53 @@ def _get_all_metrics(data: pd.DataFrame) -> list[str]:
 	return metrics
 
 
+def _corr_entry(group: pd.DataFrame, metric: str) -> dict:
+	return {
+		"n": len(group),
+		"train_pearson": group["train_acc"].corr(group[metric]),
+		"val_pearson": group["val_acc"].corr(group[metric]),
+		"train_spearman": group["train_acc"].corr(group[metric], method="spearman"),
+		"val_spearman": group["val_acc"].corr(group[metric], method="spearman"),
+	}
+
+
 def compute_correlations(data: pd.DataFrame, out_csv: str | None = None) -> pd.DataFrame:
 	correlations = {}
 	metrics = _get_all_metrics(data)
+	has_randomness = "randomness" in data.columns
 
-	for metric in metrics:
-		train_pearson = data["train_acc"].corr(data[metric])
-		val_pearson = data["val_acc"].corr(data[metric])
-		train_spearman = data["train_acc"].corr(data[metric], method="spearman")
-		val_spearman = data["val_acc"].corr(data[metric], method="spearman")
-
-		correlations[f"full_{metric}"] = {
-			"n": len(data),
-			"train_pearson": train_pearson,
-			"val_pearson": val_pearson,
-			"train_spearman": train_spearman,
-			"val_spearman": val_spearman,
-		}
-
-	for dataset_name, group in data.groupby("dataset"):
+	for layer, layer_group in data.groupby("layer"):
 		for metric in metrics:
-			correlations[f"{dataset_name}_{metric}"] = {
-				"n": len(group),
-				"train_pearson": group["train_acc"].corr(group[metric]),
-				"val_pearson": group["val_acc"].corr(group[metric]),
-				"train_spearman": group["train_acc"].corr(group[metric], method="spearman"),
-				"val_spearman": group["val_acc"].corr(group[metric], method="spearman"),
-			}
+			correlations[f"full__{layer}__{metric}"] = _corr_entry(layer_group, metric)
 
-	for model_name, group in data.groupby("model"):
-		for metric in metrics:
-			correlations[f"{model_name}_{metric}"] = {
-				"n": len(group),
-				"train_pearson": group["train_acc"].corr(group[metric]),
-				"val_pearson": group["val_acc"].corr(group[metric]),
-				"train_spearman": group["train_acc"].corr(group[metric], method="spearman"),
-				"val_spearman": group["val_acc"].corr(group[metric], method="spearman"),
-			}
+		for dataset_name, group in layer_group.groupby("dataset"):
+			for metric in metrics:
+				correlations[f"{dataset_name}__{layer}__{metric}"] = _corr_entry(group, metric)
 
-	for (dataset_name, model_name), group in data.groupby(["dataset", "model"]):
-		for metric in metrics:
-			correlations[f"{dataset_name}_{model_name}_{metric}"] = {
-				"n": len(group),
-				"train_pearson": group["train_acc"].corr(group[metric]),
-				"val_pearson": group["val_acc"].corr(group[metric]),
-				"train_spearman": group["train_acc"].corr(group[metric], method="spearman"),
-				"val_spearman": group["val_acc"].corr(group[metric], method="spearman"),
-			}
+		for model_name, group in layer_group.groupby("model"):
+			for metric in metrics:
+				correlations[f"{model_name}__{layer}__{metric}"] = _corr_entry(group, metric)
+
+		for (dataset_name, model_name), group in layer_group.groupby(["dataset", "model"]):
+			for metric in metrics:
+				correlations[f"{dataset_name}__{model_name}__{layer}__{metric}"] = _corr_entry(group, metric)
+
+		if has_randomness:
+			for randomness, group in layer_group.groupby("randomness"):
+				for metric in metrics:
+					correlations[f"randomness_{randomness:g}__{layer}__{metric}"] = _corr_entry(group, metric)
+
+			for (dataset_name, randomness), group in layer_group.groupby(["dataset", "randomness"]):
+				for metric in metrics:
+					correlations[f"{dataset_name}__randomness_{randomness:g}__{layer}__{metric}"] = _corr_entry(group, metric)
+
+			for (model_name, randomness), group in layer_group.groupby(["model", "randomness"]):
+				for metric in metrics:
+					correlations[f"{model_name}__randomness_{randomness:g}__{layer}__{metric}"] = _corr_entry(group, metric)
+
+			for (dataset_name, model_name, randomness), group in layer_group.groupby(["dataset", "model", "randomness"]):
+				for metric in metrics:
+					correlations[f"{dataset_name}__{model_name}__randomness_{randomness:g}__{layer}__{metric}"] = _corr_entry(group, metric)
 
 	corr_df = pd.DataFrame.from_dict(correlations, orient="index")
 

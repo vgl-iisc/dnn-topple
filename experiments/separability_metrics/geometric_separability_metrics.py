@@ -30,10 +30,32 @@ CPUS = 24
 class TensorExperiment:
 	model: str
 	dataset: str
+	dataset_label: str
+	randomness: float
 	split: str
 	layer: str
 	epoch: int
 	tensor_path: str
+
+
+@dataclass
+class AdjExperiment:
+	model: str
+	dataset: str
+	dataset_label: str
+	randomness: float
+	split: str
+	epoch: int
+	anchor: str
+	adj_path: str
+
+
+def parse_dataset_randomness(dataset_label: str) -> tuple[str, float]:
+	"""Parse dataset label like 'mnist-r0.4' into ('mnist', 0.4). Defaults to randomness=0.0."""
+	match = re.match(r"^(.*)-r([0-9]*\.?[0-9]+)$", dataset_label)
+	if not match:
+		return dataset_label, 0.0
+	return match.group(1), float(match.group(2))
 
 
 def parse_tensor_metadata(data_dir: str, tensor_path: str) -> TensorExperiment:
@@ -63,11 +85,14 @@ def parse_tensor_metadata(data_dir: str, tensor_path: str) -> TensorExperiment:
 		raise ValueError(f"Unable to parse model/dataset from '{model_data}'")
 
 	model = md_parts[0]
-	dataset = "_".join(md_parts[1:])
+	dataset_label = "_".join(md_parts[1:])
+	dataset, randomness = parse_dataset_randomness(dataset_label)
 
 	return TensorExperiment(
 		model=model,
 		dataset=dataset,
+		dataset_label=dataset_label,
+		randomness=randomness,
 		split=split,
 		layer=layer,
 		epoch=epoch,
@@ -254,6 +279,10 @@ def compute_separability_metrics(
 
 def find_knn_dirs(knn_graphs_dir: str) -> dict[int, str]:
 	"""Scan knn_graphs_dir for knns_cross_epoch_* subdirs and return {k: path}."""
+ 
+	if "knn" in knn_graphs_dir:
+		return {20: knn_graphs_dir}
+ 
 	k_dirs: dict[int, str] = {}
 	for entry in os.scandir(knn_graphs_dir):
 		if entry.is_dir():
@@ -263,14 +292,64 @@ def find_knn_dirs(knn_graphs_dir: str) -> dict[int, str]:
 	return k_dirs
 
 
-def find_adj_file(knn_dir: str, model: str, dataset: str, split: str, epoch: int, k: int):
+def find_adj_file(knn_dir: str, model: str, dataset_label: str, split: str, epoch: int, k: int, layer: str):
 	"""Return the adjacency list file path for model/dataset/split/epoch/k, or None if not found."""
-	folder = os.path.join(knn_dir, f"{model}_{dataset}", split)
-	search_path = os.path.join(folder, f"adj_a*_e{epoch}_{k}_connected.txt")
+	folder = os.path.join(knn_dir, f"{model}_{dataset_label}", split)
+	search_path = os.path.join(folder, f"adj_{layer}_e{epoch}_{k}_connected.txt")
 	if not os.path.isdir(folder):
 		return (None, search_path)
-	matches = glob.glob(os.path.join(folder, f"adj_a*_e{epoch}_{k}_connected.txt"))
+	matches = glob.glob(os.path.join(folder, f"adj_{layer}_e{epoch}_{k}_connected.txt"))
 	return (matches[0], search_path) if matches else (None, search_path)
+
+
+def discover_adj_tasks(k_dirs: dict[int, str]) -> list[AdjExperiment]:
+	"""
+	Discover unique (model, dataset, split, epoch, anchor) tasks by scanning one reference k directory.
+	Each discovered task can then be evaluated across all available k values.
+	"""
+	if not k_dirs:
+		return []
+
+	ref_k = min(k_dirs.keys())
+	ref_dir = k_dirs[ref_k]
+	pattern = os.path.join(ref_dir, "*", "*", f"adj_a*_e*_{ref_k}_connected.txt")
+
+	unique_tasks: dict[tuple[str, str, str, int, str], AdjExperiment] = {}
+	for adj_path in glob.glob(pattern):
+		rel = os.path.relpath(adj_path, ref_dir)
+		parts = rel.split(os.sep)
+		if len(parts) != 3:
+			continue
+
+		model_dataset, split, filename = parts
+		name_match = re.match(rf"^adj_(.+)_e(\d+)_{ref_k}_connected\.txt$", filename)
+		if not name_match:
+			continue
+
+		anchor = name_match.group(1)
+		epoch = int(name_match.group(2))
+
+		md_parts = model_dataset.split("_")
+		if len(md_parts) < 2:
+			continue
+
+		model = md_parts[0]
+		dataset_label = "_".join(md_parts[1:])
+		dataset, randomness = parse_dataset_randomness(dataset_label)
+		key = (model, dataset_label, split, epoch, anchor)
+		if key not in unique_tasks:
+			unique_tasks[key] = AdjExperiment(
+				model=model,
+				dataset=dataset,
+				dataset_label=dataset_label,
+				randomness=randomness,
+				split=split,
+				epoch=epoch,
+				anchor=anchor,
+				adj_path=adj_path,
+			)
+
+	return [unique_tasks[k] for k in sorted(unique_tasks.keys())]
 
 
 def compute_knn_metrics_from_graph(adj_file: str, labels: np.ndarray) -> tuple[float, float]:
@@ -321,12 +400,13 @@ def process_tensor_file(
 	meta = parse_tensor_metadata(data_dir, tensor_path)
 	datasets = find_all_datasets(datasets_dir)
 
-	if meta.dataset not in datasets:
+	dataset_key = meta.dataset if meta.dataset in datasets else meta.dataset_label
+	if dataset_key not in datasets:
 		raise ValueError(f"Dataset '{meta.dataset}' not found in {datasets_dir}")
 
-	dataset = datasets[meta.dataset]
+	dataset = datasets[dataset_key]
 	if meta.split not in dataset.labels_by_split:
-		raise ValueError(f"Split '{meta.split}' not found for dataset '{meta.dataset}'")
+		raise ValueError(f"Split '{meta.split}' not found for dataset '{dataset_key}'")
 
 	labels = np.asarray(dataset.labels_by_split[meta.split], dtype=int)
 	X = load_tensor_data(tensor_path)
@@ -348,6 +428,7 @@ def process_tensor_file(
 
 	result = {
 		"dataset": meta.dataset,
+		"randomness": meta.randomness,
 		"split": meta.split,
 		"model": meta.model,
 		"epoch": meta.epoch,
@@ -359,7 +440,7 @@ def process_tensor_file(
 
 	if k_dirs is not None:
 		for k, knn_dir in sorted(k_dirs.items()):
-			adj_file, search_path = find_adj_file(knn_dir, meta.model, meta.dataset, meta.split, meta.epoch, k)
+			adj_file, search_path = find_adj_file(knn_dir, meta.model, meta.dataset_label, meta.split, meta.epoch, k)
 
 			if adj_file is None:
 				log.warning(f"{worker_id}: No adj file for {meta.model}_{meta.dataset}/{meta.split} epoch={meta.epoch} k={k} (searched {search_path})")
@@ -380,6 +461,72 @@ def process_tensor_file(
 	return result
 
 
+def process_adj_file(
+	worker_id: int,
+	adj_task: AdjExperiment,
+	datasets_dir: str,
+	k_dirs: dict[int, str] | None = None,
+	per_file_log_dir: str | None = None,
+) -> dict:
+	log = logging.getLogger(__name__)
+	log.info(f"{worker_id}: Processing adjacency task {adj_task.model}_{adj_task.dataset}/{adj_task.split} e{adj_task.epoch}")
+
+	datasets = find_all_datasets(datasets_dir)
+	dataset_key = adj_task.dataset if adj_task.dataset in datasets else adj_task.dataset_label
+	if dataset_key not in datasets:
+		raise ValueError(f"Dataset '{adj_task.dataset}' not found in {datasets_dir}")
+
+	dataset = datasets[dataset_key]
+	if adj_task.split not in dataset.labels_by_split:
+		raise ValueError(f"Split '{adj_task.split}' not found for dataset '{dataset_key}'")
+
+	labels = np.asarray(dataset.labels_by_split[adj_task.split], dtype=int)
+
+	result = {
+		"dataset": adj_task.dataset,
+		"randomness": adj_task.randomness,
+		"split": adj_task.split,
+		"model": adj_task.model,
+		"epoch": adj_task.epoch,
+		"layer": adj_task.anchor,
+		"tensor_path": np.nan,
+		"k_neighbors": np.nan,
+		"num_points": int(labels.shape[0]),
+		"num_classes": int(len(np.unique(labels))),
+		"intra_class_mean_distance": np.nan,
+		"inter_class_mean_distance": np.nan,
+		"intra_inter_distance_ratio": np.nan,
+		"centroid_mean_separation": np.nan,
+		"centroid_min_separation": np.nan,
+		"neighborhood_purity": np.nan,
+		"knn_accuracy": np.nan,
+	}
+
+	if k_dirs is not None:
+		for k, knn_dir in sorted(k_dirs.items()):
+			adj_file, search_path = find_adj_file(knn_dir, adj_task.model, adj_task.dataset_label, adj_task.split, adj_task.epoch, k, adj_task.anchor)
+			if adj_file is None:
+				log.warning(
+					f"{worker_id}: No adj file for {adj_task.model}_{adj_task.dataset}/{adj_task.split} "
+					f"epoch={adj_task.epoch} k={k} (searched {search_path})"
+				)
+				result[f"neighbourhood_purity_{k}"] = np.nan
+				result[f"knn_accuracy_{k}"] = np.nan
+			else:
+				purity, acc = compute_knn_metrics_from_graph(adj_file, labels)
+				result[f"neighbourhood_purity_{k}"] = purity
+				result[f"knn_accuracy_{k}"] = acc
+
+	if per_file_log_dir is not None:
+		safe_name = f"{adj_task.model}_{adj_task.dataset_label}__{adj_task.split}__e{adj_task.epoch}.csv"
+		log_csv = os.path.join(per_file_log_dir, safe_name)
+		pd.DataFrame([result]).to_csv(log_csv, index=False)
+		log.info(f"{worker_id}: Logged result to {log_csv}")
+
+	log.info(f"{worker_id}: Completed adjacency task {adj_task.model}_{adj_task.dataset}/{adj_task.split} e{adj_task.epoch}")
+	return result
+
+
 def main(
 	datasets_dir: str,
 	data_dir: str,
@@ -396,10 +543,6 @@ def main(
 	tensor_files = find_all_tensor_files(data_dir)
 	logger.info(f"Found {len(tensor_files)} tensor files to process")
 
-	if len(tensor_files) == 0:
-		logger.warning("No tensor files found")
-		return
-
 	N_workers = max(1, CPUS)
 
 	k_dirs = find_knn_dirs(knn_graphs_dir) if knn_graphs_dir is not None else None
@@ -412,28 +555,46 @@ def main(
 	logger.info(f"Per-file logs will be written to {per_file_log_dir}")
 
 	task_args = []
-	for i in range(N_workers):
-		worker_files = tensor_files[i::N_workers]
-		for tensor_path in worker_files:
-			task_args.append(
-				(
-					i,
-					tensor_path,
-					data_dir,
-					datasets_dir,
-					k_neighbors,
-					max_intra_pairs_per_class,
-					max_inter_pairs,
-					random_seed,
-					k_dirs,
-					per_file_log_dir,
+	if len(tensor_files) > 0:
+		for i in range(N_workers):
+			worker_files = tensor_files[i::N_workers]
+			for tensor_path in worker_files:
+				task_args.append(
+					(
+						i,
+						tensor_path,
+						data_dir,
+						datasets_dir,
+						k_neighbors,
+						max_intra_pairs_per_class,
+						max_inter_pairs,
+						random_seed,
+						k_dirs,
+						per_file_log_dir,
+					)
 				)
-			)
 
-	logger.info(f"Starting processing: {len(task_args)} files across {N_workers} workers")
+		logger.info(f"Starting tensor processing: {len(task_args)} files across {N_workers} workers")
+		with Pool(N_workers) as processes:
+			results = processes.starmap(process_tensor_file, task_args)
+	else:
+		if not k_dirs:
+			logger.warning("No tensor files found and no KNN graph directories provided/found")
+			return
 
-	with Pool(N_workers) as processes:
-		results = processes.starmap(process_tensor_file, task_args)
+		adj_tasks = discover_adj_tasks(k_dirs)
+		if len(adj_tasks) == 0:
+			logger.warning("No tensor files found and no adjacency tasks discovered from KNN graph directories")
+			return
+
+		for i in range(N_workers):
+			worker_tasks = adj_tasks[i::N_workers]
+			for adj_task in worker_tasks:
+				task_args.append((i, adj_task, datasets_dir, k_dirs, per_file_log_dir))
+
+		logger.info(f"No tensor files found; starting adjacency-only processing: {len(task_args)} tasks across {N_workers} workers")
+		with Pool(N_workers) as processes:
+			results = processes.starmap(process_adj_file, task_args)
 
 	results = [r for r in results if r is not None]
 	if len(results) == 0:
