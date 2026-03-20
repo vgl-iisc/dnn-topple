@@ -228,6 +228,7 @@ def compute_separability_metrics(
 			"intra_inter_distance_ratio": np.nan,
 			"centroid_mean_separation": np.nan,
 			"centroid_min_separation": np.nan,
+			"centroid_mean_correlation": np.nan,
 			"neighborhood_purity": np.nan,
 			"knn_accuracy": np.nan,
 		}
@@ -241,25 +242,39 @@ def compute_separability_metrics(
 	# intra_mean = float(np.mean(intra)) if intra.size > 0 else np.nan
 	# inter_mean = float(np.mean(inter)) if inter.size > 0 else np.nan
 
-	# if np.isnan(intra_mean) or np.isnan(inter_mean) or inter_mean == 0.0:
-	# 	ratio = np.nan
-	# else:
-	# 	ratio = intra_mean / inter_mean
+	intra_mean = np.nan
+	inter_mean = np.nan
 
-	# centroids = []
-	# for cls in classes:
-	# 	centroids.append(X[y == cls].mean(axis=0))
-	# centroids = np.asarray(centroids)
+	if np.isnan(intra_mean) or np.isnan(inter_mean) or inter_mean == 0.0:
+		ratio = np.nan
+	else:
+		ratio = intra_mean / inter_mean
 
-	# if centroids.shape[0] >= 2:
-	# 	centroid_d = pairwise_distances(centroids)
-	# 	i_upper = np.triu_indices(centroid_d.shape[0], k=1)
-	# 	centroid_vals = centroid_d[i_upper]
-	# 	centroid_mean = float(np.mean(centroid_vals))
-	# 	centroid_min = float(np.min(centroid_vals))
-	# else:
-	# 	centroid_mean = np.nan
-	# 	centroid_min = np.nan
+	centroids = []
+	for cls in classes:
+		centroids.append(X[y == cls].mean(axis=0))
+	centroids = np.asarray(centroids)
+
+	if centroids.shape[0] >= 2:
+		centroid_d = pairwise_distances(centroids)
+		i_upper = np.triu_indices(centroid_d.shape[0], k=1)
+		centroid_vals = centroid_d[i_upper]
+		centroid_mean = float(np.mean(centroid_vals))
+		centroid_min = float(np.min(centroid_vals))
+
+		# Pearson correlation between each pair of centroids
+		normed = centroids - centroids.mean(axis=1, keepdims=True)
+		norms = np.linalg.norm(normed, axis=1, keepdims=True)
+		# avoid division by zero for constant centroids
+		norms = np.where(norms == 0, 1.0, norms)
+		normed = normed / norms
+		corr_matrix = normed @ normed.T
+		corr_vals = corr_matrix[i_upper]
+		centroid_mean_corr = float(np.mean(corr_vals))
+	else:
+		centroid_mean = np.nan
+		centroid_min = np.nan
+		centroid_mean_corr = np.nan
 
 	purity = np.nan
 	knn_acc = np.nan
@@ -267,13 +282,14 @@ def compute_separability_metrics(
 	return {
 		"num_points": int(X.shape[0]),
 		"num_classes": int(len(classes)),
-		"intra_class_mean_distance": np.nan,
-		"inter_class_mean_distance": np.nan,
-		"intra_inter_distance_ratio": np.nan,
-		"centroid_mean_separation": np.nan,
-		"centroid_min_separation": np.nan,
-		"neighborhood_purity": purity,
-		"knn_accuracy": knn_acc,
+		"intra_class_mean_distance": intra_mean,
+		"inter_class_mean_distance": inter_mean,
+		"intra_inter_distance_ratio": ratio,
+		"centroid_mean_separation": centroid_mean,
+		"centroid_min_separation": centroid_min,
+		"centroid_mean_correlation": centroid_mean_corr,
+		"neighborhood_purity": np.nan,
+		"knn_accuracy": np.nan,
 	}
 
 

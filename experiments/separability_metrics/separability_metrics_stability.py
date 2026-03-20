@@ -17,6 +17,7 @@ SEPARABILITY_METRICS = [
 	"intra_inter_distance_ratio",
 	"centroid_mean_separation",
 	"centroid_min_separation",
+	"centroid_mean_correlation",
 	"neighborhood_purity",
 	"knn_accuracy",
 ]
