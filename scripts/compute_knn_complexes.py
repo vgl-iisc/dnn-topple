@@ -5,7 +5,7 @@ Goes through all landscapes in the data directory and computes
 
 import torch
 from knn_graph import compute_knn_graph
-from rn_graph import compute_rn_graph
+# from rn_graph import compute_rn_graph
 
 import os
 
@@ -20,7 +20,7 @@ from timeit import default_timer as timer
 import pickle
 import logging
 
-CPUS = 24
+CPUS = cpu_count() - 6
 
 def save_name_txt(file, k, connected):
     return f"adj_{file[len('vectors_'):-4]}_{k}" + ("_connected" if connected else "")
@@ -52,15 +52,22 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
 
             save_basepath = root.replace(data_dir, complexes_dir).replace(f"Tensors{os.sep}", f"")
             os.makedirs(save_basepath, exist_ok=True)
+            
+            possible_save_names = [save_name_fn(tensor_file, max_k, b) for b in [True, False]]
+            save_paths = [os.path.join(save_basepath, f"{name}.txt") for name in possible_save_names]
+            if any(os.path.exists(path) for path in save_paths):
+                log.info(f"{id}: Found existing files for {tensor_path} with k={max_k}, skipping")
+                continue
 
             # if method == 'r':
             if method == 'r':
                 start = timer()
-                try:
-                    Gmax = compute_rn_graph(data, complexity=75, graph_degree=60, num_threads=1, prefix=str(id))
-                except Exception as e:
-                    log.error(f"{id}: Error computing RN graph for {tensor_path}: {e}")
-                    continue
+                raise NotImplementedError()
+                # try:
+                #     Gmax = compute_rn_graph(data, complexity=75, graph_degree=60, num_threads=1, prefix=str(id))
+                # except Exception as e:
+                #     log.error(f"{id}: Error computing RN graph for {tensor_path}: {e}")
+                #     continue
             else:
                 start = timer()
                 Gmax = compute_knn_graph(data, n_neighbors=max_k)
