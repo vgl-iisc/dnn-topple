@@ -18,6 +18,7 @@ SEPARABILITY_METRICS = [
 	"centroid_mean_separation",
 	"centroid_min_separation",
 	"centroid_mean_correlation",
+	"silhouette_score",
 	"neighborhood_purity",
 	"knn_accuracy",
 ]
@@ -200,27 +201,37 @@ def main() -> None:
 	parser.add_argument("--max_intra_pairs_per_class", type=int, default=10000)
 	parser.add_argument("--max_inter_pairs", type=int, default=100000)
 	parser.add_argument("--seed", type=int, default=42)
+	parser.add_argument("--existing_metrics_csv", type=str, default=None, help="Path to existing metrics CSV to skip metric computation and directly compute correlations.")
 
 	args = parser.parse_args()
 
 	os.makedirs(args.output_dir, exist_ok=True)
 
 	metrics_csv = os.path.join(args.output_dir, f"{args.output_prefix}.csv")
-	run_separability_metrics(
-		python_executable=args.python_executable,
-		datasets_dir=args.datasets_dir,
-		data_dir=args.data_dir,
-		output_csv=metrics_csv,
-		max_intra_pairs_per_class=args.max_intra_pairs_per_class,
-		max_inter_pairs=args.max_inter_pairs,
-		seed=args.seed,
-		knn_graphs_dir=args.knn_graphs_dir,
-	)
+	if args.existing_metrics_csv is not None:
+		metrics_csv = args.existing_metrics_csv
+	else:
+		run_separability_metrics(
+			python_executable=args.python_executable,
+			datasets_dir=args.datasets_dir,
+			data_dir=args.data_dir,
+			output_csv=metrics_csv,
+			max_intra_pairs_per_class=args.max_intra_pairs_per_class,
+			max_inter_pairs=args.max_inter_pairs,
+			seed=args.seed,
+			knn_graphs_dir=args.knn_graphs_dir,
+		)
 
 	df = pd.read_csv(metrics_csv)
-	df = attach_classification_accuracies(df, args.data_dir)
-	df.to_csv(metrics_csv, index=False)
 
+	if "train_acc" not in df.columns or "val_acc" not in df.columns:
+		df = attach_classification_accuracies(df, args.data_dir)
+
+		if args.existing_metrics_csv is None:
+			print(f"Saving updated metrics with accuracies to {metrics_csv}...")
+			df.to_csv(metrics_csv, index=False)
+
+	print("Computing correlations...")
 	corrs_csv = metrics_csv.replace(".csv", "_corrs.csv")
 	compute_correlations(df, out_csv=corrs_csv)
 
