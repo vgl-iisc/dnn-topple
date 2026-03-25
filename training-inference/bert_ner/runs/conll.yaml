@@ -1,0 +1,56 @@
+datasets:
+  conll: ./datasets/conll/data/conll2003
+
+train:
+  seed: 1787645321
+  model: bert-base-uncased
+  dataset: conll
+  max_subword_length: 256   # max BERT subword tokens including CLS and SEP; 256 > 2*124+2
+  max_words: 128            # max words per sentence; 128 > 124 (dataset max across all splits)
+
+  batch_size: 16
+  epochs: 5
+  lr: 2.0e-5
+  weight_decay: 0.01
+  dropout: 0.1
+  max_grad_norm: 1.0        # gradient clipping (standard for BERT fine-tuning)
+
+  opt:
+    type: adamw
+
+  schedule:
+    type: linear_warmup_decay
+    warmup_steps: 500       # ~500/878 ≈ 0.57 warmup epochs (14041 train sents / batch_size 16)
+
+  checkpoints_dir: /media/santripta/data2/BERT/checkpoints/
+  tensorboard_dir: /media/santripta/data2/BERT/tensorboard/
+
+  # only_last_best: true    # uncomment to save disk space (keeps only final + best checkpoint)
+
+infer:
+  output_dir: /media/santripta/data2/BERT/landscape_data/
+
+  collect:
+    # All hooks capture i[0]: input to the named module, shape (B, max_subword_length, 768).
+    # Layers are sampled every 3 blocks to cover the full depth of bert-base (12 layers).
+    - path: bert.encoder.layer[0]
+      tag: layer0
+    - path: bert.encoder.layer[3]
+      tag: layer3
+    - path: bert.encoder.layer[6]
+      tag: layer6
+    - path: bert.encoder.layer[9]
+      tag: layer9
+    - path: bert.encoder.layer[11]
+      tag: layer11
+    # classifier: i[0] = dropout(last_hidden_state), identical in content to layer11 output
+    - path: classifier
+      tag: classifier
+
+  epochs:
+    - all   # collect every epoch; alternatives: last | [start, end, step] | N (every N epochs)
+
+  # ds_subsample: null      # sentence-level balanced subsample size; null = use full split
+
+name: bert_ner_conll
+device: cuda:0
