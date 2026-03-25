@@ -92,3 +92,4 @@ nbformat==5.10.4
 polyscope==2.5.0
 gpytoolbox==0.3.7
 psutil
+persim==0.3.8
