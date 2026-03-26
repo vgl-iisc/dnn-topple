@@ -92,8 +92,5 @@ nbformat==5.10.4
 polyscope==2.5.0
 gpytoolbox==0.3.7
 psutil
-<<<<<<< HEAD
 persim==0.3.8
-=======
 transformers==5.3.0
->>>>>>> exp: bert conll ner
