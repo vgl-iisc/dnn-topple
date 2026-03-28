@@ -1,0 +1,1 @@
+streamlit run vis/app.py /c/home/sumatra_llvis_data/strees_cross_epoch_penultimate/ /c/home/sumatra_llvis_data/landscape_data_cross_epoch_penultimate/ datasets/ 

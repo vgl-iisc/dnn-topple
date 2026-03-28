@@ -1,0 +1,1 @@
+streamlit run vis/app.py /c/home/sumatra_llvis_data/jtrees_pt/ /c/home/sumatra_llvis_data/landscape_data_pt/ datasets/ 
