@@ -1,4 +1,4 @@
-from experiment import LossLandscapeExperiment
+from experiment import LossLandscapeExperiment, BertExperiment
 
 import streamlit as st
 
@@ -24,7 +24,7 @@ def class2color(idx: int) -> str:
     
     return colors[idx % len(colors)]
 
-@st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__})
+@st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, BertExperiment: BertExperiment.__hash__})
 def get_class_coverage(exp: LossLandscapeExperiment, count: int, class_idx: int) -> float:
     ds = exp.dataset
     total = ds.class_size_by_split[exp.split][ds.classes[int(class_idx)]]

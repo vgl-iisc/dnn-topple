@@ -23,7 +23,7 @@ from pyinstrument import Profiler
 
 import argparse as ap
 
-from experiment import Dataset, LossLandscapeExperiment, find_all_datasets, find_all_experiments
+from experiment import Dataset, LossLandscapeExperiment, find_all_datasets, find_all_experiments, BertExperiment, find_all_bert_experiments
 from basic_utils import get_filtered_cps_vs_thresh, get_order_and_weights, get_tree, get_labels, get_preds, get_partition, compute_arc_features, get_valley_vs_thresh
 from tree_explorer import render_tree_explorer
 from coverage_view import render_coverage_map
@@ -31,8 +31,13 @@ from components import render_experiment_selector
 
 path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts')))
 
-@st.cache_data
+@st.cache_resource
 def find_available_experiments():
+    if st.session_state.get("is_bert", False):
+        experiments = find_all_bert_experiments(
+            st.session_state.landscapes_dir, st.session_state.ct_dir
+        )
+        return {}, experiments
     datasets = find_all_datasets(st.session_state.datasets_dir)
     experiments = find_all_experiments(datasets, st.session_state.landscapes_dir, st.session_state.ct_dir)
     return datasets, experiments
@@ -152,6 +157,19 @@ def render_experiment(id: int, half_width: bool):
             
     main_body()
 
+def _detect_bert_from_ct_dir(ct_dir: str) -> bool:
+    """Auto-detect BERT mode: ctree files live at depth 1 inside ct_dir (not depth 2)."""
+    if not os.path.isdir(ct_dir):
+        return False
+    for name in os.listdir(ct_dir):
+        sub = os.path.join(ct_dir, name)
+        if os.path.isdir(sub):
+            for fname in os.listdir(sub):
+                if fname.endswith(".order.dat"):
+                    return True  # ctree file found one level deep → BERT layout
+    return False
+
+
 def main():
     parser = ap.ArgumentParser(description="Streamlit app for exploring contour trees and coverage.", prefix_chars="+")
     parser.add_argument("ct_dir", type=str, help="Directory containing contour tree files.")
@@ -161,6 +179,9 @@ def main():
     # streamlit doesn't allow flags, so we use "+flagname" to indicate boolean flags
     parser.add_argument("+model_eq_dataset", action="store_true", help="Whether to treat model name as equivalent to dataset name when loading experiments.")
     parser.add_argument("+no_preds", action="store_true", help="Whether to skip loading predictions, which can speed up loading but disable coverage computations.")
+    parser.add_argument("+bert", action="store_true", help="Force BERT mode. Auto-detected from ct_dir structure when omitted.")
+    parser.add_argument("+complexes_dir", type=str, default="", help="Directory containing BERT KNN complexes (token_coords_*.pt files). Required for BERT mode.")
+    parser.add_argument("+conll_dir", type=str, default="", help="Directory containing CoNLL-2003 eng.{train,testa,testb} files. Used for sentence context in the BERT data explorer.")
 
     args = parser.parse_args()
     
@@ -172,6 +193,16 @@ def main():
     
     st.session_state.model_eq_dataset = args.model_eq_dataset
     st.session_state.no_preds = args.no_preds
+
+    # Determine BERT mode: explicit flag takes priority; fall back to auto-detection.
+    is_bert = args.bert or _detect_bert_from_ct_dir(st.session_state.ct_dir)
+    st.session_state.is_bert = is_bert
+    st.session_state.complexes_dir = args.complexes_dir.strip("/\\") if args.complexes_dir else ""
+    if args.conll_dir:
+        conll_dir = args.conll_dir.strip("/\\")
+    else:
+        conll_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../datasets/conll/data/conll2003')
+    st.session_state.conll_dir = conll_dir
     
     datasets, experiments = find_available_experiments()
 

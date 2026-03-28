@@ -1,7 +1,7 @@
-from basic_utils import get_preds
+from basic_utils import get_preds, get_labels, get_bert_sentences
 from coverage_utils import class2color, get_class_coverage
 from feature import get_type_string
-from dataset_loader import load_dataset
+from dataset_loader import load_dataset, load_bert_flat_losses
 
 import pyvis.network as net
 
@@ -9,10 +9,11 @@ import sys
 
 import os
 
-from experiment import LossLandscapeExperiment, Dataset
+from experiment import LossLandscapeExperiment, Dataset, BertExperiment
 import streamlit as st
 import streamlit.components.v1 as components
 
+import torch
 import networkx as nx
 import altair as alt
 import pandas as pd
@@ -76,11 +77,11 @@ def render_coverage_map(id: int):
 
     f2c, acc, c2f, cc, datex = st.tabs(["Feature to Class", "Accuracy", "Class to Features", "Class Co-Occurrences", "Data Explorer"])
     selected_features = [features[fid] for fid in selection]
-    node2feat = st.session_state.get(f"node2feat_{id}", [])
+    node2feat = st.session_state.get(f"node2feat_{id}") or []
    
     @st.fragment
     def f2c_viewer():
-        @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x)) if x and isinstance(x[0], ct.RichFeature) else hash(tuple(x))})
+        @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, BertExperiment: BertExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x)) if x and isinstance(x[0], ct.RichFeature) else hash(tuple(x))})
         def f2c_plot(exp: LossLandscapeExperiment, feats: list[ct.RichFeature], preds: list[int], view: str, show_what: str, freeze_top: bool, focused_classes: list[int]) -> alt.Chart | None:
             focused_class_set = set(focused_classes)
             classes = [exp.dataset.classes[i] for i in focused_classes]
@@ -364,10 +365,12 @@ def render_coverage_map(id: int):
     def datex_viewer():
         node2label = exp.dataset.labels_by_split[exp.split]
         
-        @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__})
+        @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, BertExperiment: BertExperiment.__hash__})
         def load_datapoints_by_indices(exp: LossLandscapeExperiment, indices: tuple[int, ...]) -> list:
             """Load datapoints from dataset by indices. Cached to avoid repeated expensive access."""
             ds = load_dataset(exp)
+            if ds is None:
+                return []
             return [ds[i] for i in indices]
 
         def image_view(indices_fids: list[tuple[int, int]], datapoints: list, siamese: bool = False):
@@ -375,6 +378,8 @@ def render_coverage_map(id: int):
             
             key = f"data_explorer_image_view_{id}"
             key += "_siamese" if siamese else ""
+            
+            flip = exp.dataset.name == "emnist_letters"
             
             per_page = 16
             N = len(datapoints)
@@ -387,14 +392,20 @@ def render_coverage_map(id: int):
                     for i, ((idx, fid), data_point) in enumerate(list(zip(indices_fids, datapoints))[page * per_page:(page + 1) * per_page]):
                         lbl = exp.dataset.classes[data_point["label"]]
                         with cols[i % 4]:
-                            st.image(data_point['image'].numpy().transpose(1, 2, 0), caption=f"Idx {idx} ({fid}): {lbl}")
+                            image_np = data_point['image'].numpy().transpose(1, 2, 0)
+                            if flip:
+                                image_np = np.flip(image_np, axis=0)
+                            st.image(image_np, caption=f"Idx {idx} ({fid}): {lbl}")
             elif N > 0:
                 with st.container(height=700):
                     cols = st.columns(4)
                     for i, ((idx, fid), data_point) in enumerate(zip(indices_fids, datapoints)):
                         lbl = exp.dataset.classes[data_point["label"]]
                         with cols[i % 4]:
-                            st.image(data_point['image'].numpy().transpose(1, 2, 0), caption=f"Idx {idx} ({fid}): {lbl}")
+                            image_np = data_point['image'].numpy().transpose(1, 2, 0)
+                            if flip:
+                                image_np = np.flip(image_np, axis=0)
+                            st.image(image_np, caption=f"Idx {idx} ({fid}): {lbl}")
             else:
                 st.info("No data points loaded.")
         
@@ -439,7 +450,8 @@ def render_coverage_map(id: int):
                     fid = node2feat[idx].id if idx < len(node2feat) else -1
                     indices_fids.append((idx, fid))
                     
-            if any([i[0] < 0 or i[0] >= len(ds) for i in indices_fids]):
+            ds = load_dataset(exp)
+            if ds is not None and any([i[0] < 0 or i[0] >= len(ds) for i in indices_fids]):
                 st.error("One or more indices are out of bounds.")    
             else:
                 load_from_indices_fids(indices_fids)
@@ -492,4 +504,111 @@ def render_coverage_map(id: int):
     show_utility(acc, acc_viewer, "Accuracy")
     show_utility(c2f, c2f_viewer, "Class to Features")
     show_utility(cc, cc_viewer, "Class to Feature")
-    show_utility(datex, datex_viewer, "Data Explorer")
+
+    # ---------- Data Explorer: branch on model type ----------
+    @st.fragment
+    def bert_datex_viewer():
+        """Token-level data explorer for BERT NER experiments."""
+        node2label = exp.dataset.labels_by_split[exp.split]
+        labels_arr = np.array(get_labels(exp))
+        preds_arr  = np.array(get_preds(exp))
+        ner_classes = exp.dataset.classes
+        sentences = get_bert_sentences(exp.split)  # sentences[dataset_idx] = list[str]
+
+        try:
+            losses_arr = load_bert_flat_losses(exp)
+        except Exception as e:
+            st.warning(f"Could not load flat losses: {e}")
+            losses_arr = np.zeros(len(node2label), dtype=np.float32)
+
+        coords_path = os.path.join(
+            st.session_state.complexes_dir,
+            exp.split,
+            f"token_coords_a{exp.tag}_{exp.epoch_tag}.pt",
+        )
+        try:
+            coords = torch.load(coords_path, weights_only=True).numpy()  # (N_valid, 2)
+        except Exception:
+            coords = np.zeros((len(node2label), 2), dtype=np.int64)
+
+        def token_table_view(indices_fids: list[tuple[int, int]]):
+            per_page = 100
+            rows = []
+            for node_idx, fid in indices_fids:
+                if node_idx < 0 or node_idx >= len(node2label):
+                    continue
+                sent_idx = int(coords[node_idx, 0]) if node_idx < len(coords) else -1
+                word_idx = int(coords[node_idx, 1]) if node_idx < len(coords) else -1
+                true_lbl = ner_classes[int(labels_arr[node_idx])] if node_idx < len(labels_arr) else "?"
+                pred_lbl = ner_classes[int(preds_arr[node_idx])]  if node_idx < len(preds_arr)  else "?"
+                loss = float(losses_arr[node_idx]) if node_idx < len(losses_arr) else float("nan")
+                if sentences and 0 <= sent_idx < len(sentences):
+                    words = sentences[sent_idx]
+                    parts = [f"[{w.upper()}]" if i == word_idx else w for i, w in enumerate(words)]
+                    sentence_str = " ".join(parts)
+                else:
+                    sentence_str = f"sent={sent_idx}, word={word_idx}"
+                rows.append({
+                    "Node": node_idx,
+                    "Feature": fid,
+                    "Sentence": sentence_str,
+                    "True": true_lbl,
+                    "Pred": pred_lbl,
+                    "Loss": round(loss, 5),
+                    "Correct": true_lbl == pred_lbl,
+                })
+            if not rows:
+                st.info("No valid tokens in selection.")
+                return
+            df = pd.DataFrame(rows)
+            N = len(df)
+            if N > per_page:
+                page_count = (N + per_page - 1) // per_page
+                page = st.slider(
+                    "Page", min_value=1, max_value=max(1, page_count), value=1,
+                    key=f"bert_datex_page_{id}",
+                ) - 1
+                st.dataframe(
+                    df.iloc[page * per_page:(page + 1) * per_page],
+                    hide_index=True, width="stretch",
+                    key=f"bert_token_table_{id}",
+                )
+            else:
+                st.dataframe(df, hide_index=True, width="stretch",
+                             key=f"bert_token_table_{id}")
+
+        with st.container(horizontal=True, vertical_alignment="center"):
+            mode = st.selectbox(
+                "Load Mode",
+                options=["From Indices", "From Selected Features"],
+                index=1,
+                key=f"bert_datex_mode_{id}",
+            )
+            if mode == "From Indices":
+                cs_idx = st.text_input(
+                    "Token Indices (comma-separated)",
+                    key=f"bert_datex_indices_{id}", value=""
+                )
+
+        if mode == "From Indices" and cs_idx.strip() != "":
+            indices_fids = []
+            for part in cs_idx.split(","):
+                part = part.strip()
+                if part.isdigit():
+                    idx = int(part)
+                    fid = node2feat[idx].id if idx < len(node2feat) else -1
+                    indices_fids.append((idx, fid))
+            st.session_state[f"bert_loaded_indices_{id}"] = indices_fids
+        elif mode == "From Selected Features":
+            if st.button("Load from Selected Features", key=f"bert_load_from_feats_{id}"):
+                indices_fids = set()
+                for f in selected_features:
+                    indices_fids.update((m, f.id) for m in f.members)
+                st.session_state[f"bert_loaded_indices_{id}"] = sorted(indices_fids)
+
+        token_table_view(st.session_state.get(f"bert_loaded_indices_{id}", []))
+
+    if isinstance(exp, BertExperiment) or st.session_state.is_bert:
+        show_utility(datex, bert_datex_viewer, "Data Explorer")
+    else:
+        show_utility(datex, datex_viewer, "Data Explorer")
