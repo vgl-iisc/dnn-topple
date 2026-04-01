@@ -285,17 +285,21 @@ def render_coverage_map(id: int):
                 class_name = exp.dataset.classes[cls]
                 features_with_class = 0
                 features_majority = 0
+                features_homogeneity = 0
                 
                 for f in selected_features:
                     if f.class_counts.get(cls, 0) > 0:
                         features_with_class += 1
                         if f.majority_class == cls:
                             features_majority += 1
+                            if f.homogeneity > 0.95:
+                                features_homogeneity += 1
                 
                 data_total.append({
                     "Class": class_name,
                     "Count": features_with_class,
-                    "Count Majority": features_majority
+                    "Count Majority": features_majority,
+                    "Count Homogeneous": features_homogeneity
                 })
             
             df = pd.DataFrame(data_total)
@@ -321,7 +325,16 @@ def render_coverage_map(id: int):
                 ]
             )
             
-            chart = (base + overlay).properties(
+            overlay_homogeneous = alt.Chart(df).mark_bar(color='darkblue', opacity=1.0).encode(
+                x=alt.X("Class:N", title="Class"),
+                y=alt.Y("Count Homogeneous:Q", title="Number of Features"),
+                tooltip=[
+                    alt.Tooltip("Class:N", title="Class"),
+                    alt.Tooltip("Count Homogeneous:Q", title="Features where class is homogeneous majority")
+                ]
+            )
+            
+            chart = (base + overlay + overlay_homogeneous).properties(
                 width=600,
                 height=400
             )
@@ -486,6 +499,8 @@ def render_coverage_map(id: int):
                 st.text(f"Outliers ({len(siamese_datapoints)})")
                 image_view(siamese_indices_fids, siamese_datapoints, True)
         else:
+            with st.expander(f"Indices", expanded=False):
+                st.write(", ".join([str(idx) for idx, _ in indices_fids]))
             image_view(indices_fids, datapoints)
     
     def show_utility(container, viewer_func, name):
@@ -531,7 +546,7 @@ def render_coverage_map(id: int):
         except Exception:
             coords = np.zeros((len(node2label), 2), dtype=np.int64)
 
-        def token_table_view(indices_fids: list[tuple[int, int]]):
+        def token_table_view(indices_fids: list[tuple[int, int]], search_text: str = ""):
             per_page = 100
             rows = []
             for node_idx, fid in indices_fids:
@@ -546,6 +561,8 @@ def render_coverage_map(id: int):
                     words = sentences[sent_idx]
                     parts = [f"[{w.upper()}]" if i == word_idx else w for i, w in enumerate(words)]
                     sentence_str = " ".join(parts)
+                    if search_text.strip() != "" and search_text.lower() not in sentence_str.lower():
+                        continue
                 else:
                     sentence_str = f"sent={sent_idx}, word={word_idx}"
                 rows.append({
@@ -589,6 +606,9 @@ def render_coverage_map(id: int):
                     "Token Indices (comma-separated)",
                     key=f"bert_datex_indices_{id}", value=""
                 )
+                search_text = ""
+            elif mode == "From Selected Features":
+                search_text = st.text_input("Text search", key=f"bert_feature_search_{id}", value="")
 
         if mode == "From Indices" and cs_idx.strip() != "":
             indices_fids = []
@@ -606,7 +626,7 @@ def render_coverage_map(id: int):
                     indices_fids.update((m, f.id) for m in f.members)
                 st.session_state[f"bert_loaded_indices_{id}"] = sorted(indices_fids)
 
-        token_table_view(st.session_state.get(f"bert_loaded_indices_{id}", []))
+        token_table_view(st.session_state.get(f"bert_loaded_indices_{id}", []), search_text)
 
     if isinstance(exp, BertExperiment) or st.session_state.is_bert:
         show_utility(datex, bert_datex_viewer, "Data Explorer")

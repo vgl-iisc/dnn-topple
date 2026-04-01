@@ -1,0 +1,1001 @@
+﻿,Class,Count,Count Majority,Count Homogeneous
+0,tench,1,1,1
+1,goldfish,1,1,1
+2,great white shark,5,5,5
+3,tiger shark,5,5,5
+4,hammerhead,7,7,7
+5,electric ray,5,5,5
+6,stingray,24,24,24
+7,cock,9,9,9
+8,hen,21,21,21
+9,ostrich,1,1,1
+10,brambling,2,2,2
+11,goldfinch,1,1,1
+12,house finch,1,1,1
+13,junco,4,3,3
+14,indigo bunting,2,2,2
+15,robin,1,1,1
+16,bulbul,1,1,1
+17,jay,1,1,1
+18,magpie,1,1,1
+19,chickadee,1,1,1
+20,water ouzel,1,1,1
+21,kite,7,7,7
+22,bald eagle,1,1,1
+23,vulture,5,5,5
+24,great grey owl,1,1,1
+25,European fire salamander,11,11,11
+26,common newt,8,8,8
+27,eft,22,22,22
+28,spotted salamander,7,7,7
+29,axolotl,1,1,1
+30,bullfrog,2,2,2
+31,tree frog,24,24,24
+32,tailed frog,11,11,11
+33,loggerhead,25,25,25
+34,leatherback turtle,3,3,3
+35,mud turtle,13,13,13
+36,terrapin,18,18,18
+37,box turtle,24,24,24
+38,banded gecko,2,2,2
+39,common iguana,1,1,1
+40,American chameleon,39,39,39
+41,whiptail,2,2,2
+42,agama,2,2,2
+43,frilled lizard,1,1,1
+44,alligator lizard,1,1,1
+45,Gila monster,1,1,1
+46,green lizard,28,28,28
+47,African chameleon,1,1,1
+48,Komodo dragon,1,1,1
+49,African crocodile,3,3,3
+50,American alligator,15,15,15
+51,triceratops,3,1,1
+52,thunder snake,9,9,9
+53,ringneck snake,2,2,2
+54,hognose snake,7,7,7
+55,green snake,16,16,16
+56,king snake,9,9,9
+57,garter snake,5,5,5
+58,water snake,5,5,5
+59,vine snake,12,12,12
+60,night snake,5,5,5
+61,boa constrictor,10,10,10
+62,rock python,9,9,9
+63,Indian cobra,1,1,1
+64,green mamba,15,15,15
+65,sea snake,3,3,3
+66,horned viper,16,16,16
+67,diamondback,5,5,5
+68,sidewinder,11,11,11
+69,trilobite,2,1,1
+70,harvestman,1,1,1
+71,scorpion,1,1,1
+72,black and gold garden spider,29,29,29
+73,barn spider,19,19,19
+74,garden spider,11,11,11
+75,black widow,1,1,1
+76,tarantula,1,1,1
+77,wolf spider,7,7,7
+78,tick,1,1,1
+79,centipede,2,2,2
+80,black grouse,2,2,2
+81,ptarmigan,2,2,2
+82,ruffed grouse,12,12,12
+83,prairie chicken,1,1,1
+84,peacock,1,1,1
+85,quail,4,4,4
+86,partridge,27,27,27
+87,African grey,1,1,1
+88,macaw,1,1,1
+89,sulphur-crested cockatoo,1,1,1
+90,lorikeet,1,1,1
+91,coucal,1,1,1
+92,bee eater,1,1,1
+93,hornbill,3,2,2
+94,hummingbird,1,1,1
+95,jacamar,2,2,2
+96,toucan,1,1,1
+97,drake,1,1,1
+98,red-breasted merganser,1,1,1
+99,goose,3,3,3
+100,black swan,1,1,1
+101,tusker,17,17,17
+102,echidna,4,4,4
+103,platypus,1,1,1
+104,wallaby,1,1,1
+105,koala,1,1,1
+106,wombat,1,1,1
+107,jellyfish,1,1,1
+108,sea anemone,6,6,6
+109,brain coral,4,4,4
+110,flatworm,3,3,3
+111,nematode,3,2,2
+112,conch,5,3,3
+113,snail,1,1,1
+114,slug,1,1,1
+115,sea slug,9,9,9
+116,chiton,1,1,1
+117,chambered nautilus,1,1,1
+118,Dungeness crab,16,16,16
+119,rock crab,10,10,10
+120,fiddler crab,2,1,1
+121,king crab,2,2,2
+122,American lobster,6,6,6
+123,spiny lobster,3,3,3
+124,crayfish,9,9,9
+125,hermit crab,1,1,1
+126,isopod,1,1,1
+127,white stork,11,11,11
+128,black stork,14,14,14
+129,spoonbill,1,1,1
+130,flamingo,2,2,2
+131,little blue heron,2,2,2
+132,American egret,22,22,22
+133,bittern,1,1,1
+134,crane,1,1,1
+135,limpkin,1,1,1
+136,European gallinule,1,1,1
+137,American coot,1,1,1
+138,bustard,2,1,1
+139,ruddy turnstone,1,1,1
+140,red-backed sandpiper,1,1,1
+141,redshank,1,1,1
+142,dowitcher,1,1,1
+143,oystercatcher,1,1,1
+144,pelican,2,1,1
+145,king penguin,1,1,1
+146,albatross,1,1,1
+147,grey whale,1,1,1
+148,killer whale,2,2,2
+149,dugong,1,1,1
+150,sea lion,1,1,1
+151,Chihuahua,2,2,2
+152,Japanese spaniel,4,4,4
+153,Maltese dog,7,7,7
+154,Pekinese,7,7,7
+155,Shih-Tzu,13,13,13
+156,Blenheim spaniel,3,3,3
+157,papillon,5,5,5
+158,toy terrier,8,8,8
+159,Rhodesian ridgeback,6,6,6
+160,Afghan hound,2,2,2
+161,basset,3,3,3
+162,beagle,12,12,12
+163,bloodhound,3,3,3
+164,bluetick,2,2,2
+165,black-and-tan coonhound,5,5,5
+166,Walker hound,9,9,9
+167,English foxhound,6,6,6
+168,redbone,10,10,10
+169,borzoi,1,1,1
+170,Irish wolfhound,7,7,7
+171,Italian greyhound,14,14,14
+172,whippet,3,3,3
+173,Ibizan hound,1,1,1
+174,Norwegian elkhound,3,3,3
+175,otterhound,5,5,5
+176,Saluki,2,2,2
+177,Scottish deerhound,6,6,6
+178,Weimaraner,1,1,1
+179,Staffordshire bullterrier,11,11,11
+180,American Staffordshire terrier,14,14,14
+181,Bedlington terrier,1,1,1
+182,Border terrier,2,2,2
+183,Kerry blue terrier,7,7,7
+184,Irish terrier,3,3,3
+185,Norfolk terrier,6,6,6
+186,Norwich terrier,12,12,12
+187,Yorkshire terrier,7,7,7
+188,wire-haired fox terrier,15,15,15
+189,Lakeland terrier,10,10,10
+190,Sealyham terrier,5,5,5
+191,Airedale,6,6,6
+192,cairn,7,7,7
+193,Australian terrier,5,5,5
+194,Dandie Dinmont,1,1,1
+195,Boston bull,14,14,14
+196,miniature schnauzer,11,11,11
+197,giant schnauzer,11,11,11
+198,standard schnauzer,18,18,18
+199,Scotch terrier,1,1,1
+200,Tibetan terrier,11,11,11
+201,silky terrier,9,9,9
+202,soft-coated wheaten terrier,13,13,13
+203,West Highland white terrier,13,13,13
+204,Lhasa,15,15,15
+205,flat-coated retriever,13,13,13
+206,curly-coated retriever,5,5,5
+207,golden retriever,8,8,8
+208,Labrador retriever,18,18,18
+209,Chesapeake Bay retriever,6,6,6
+210,German short-haired pointer,3,3,3
+211,vizsla,6,6,6
+212,English setter,1,1,1
+213,Irish setter,6,6,6
+214,Gordon setter,1,1,1
+215,Brittany spaniel,4,4,4
+216,clumber,7,7,7
+217,English springer,11,11,11
+218,Welsh springer spaniel,10,10,10
+219,cocker spaniel,4,4,4
+220,Sussex spaniel,4,4,4
+221,Irish water spaniel,4,4,4
+222,kuvasz,3,3,3
+223,schipperke,1,1,1
+224,groenendael,2,2,2
+225,malinois,5,5,5
+226,briard,4,3,3
+227,kelpie,6,6,6
+228,komondor,2,1,1
+229,Old English sheepdog,3,3,3
+230,Shetland sheepdog,19,19,19
+231,collie,10,10,10
+232,Border collie,27,27,27
+233,Bouvier des Flandres,11,11,11
+234,Rottweiler,2,2,2
+235,German shepherd,6,6,6
+236,Doberman,5,5,5
+237,miniature pinscher,16,16,16
+238,Greater Swiss Mountain dog,11,11,11
+239,Bernese mountain dog,5,5,5
+240,Appenzeller,7,7,7
+241,EntleBucher,11,11,11
+242,boxer,3,3,3
+243,bull mastiff,4,4,4
+244,Tibetan mastiff,1,1,1
+245,French bulldog,7,7,7
+246,Great Dane,7,7,7
+247,Saint Bernard,2,2,2
+248,Eskimo dog,13,13,13
+249,malamute,8,7,7
+250,Siberian husky,32,32,32
+251,dalmatian,1,1,1
+252,affenpinscher,10,10,10
+253,basenji,2,2,2
+254,pug,12,12,12
+255,Leonberg,2,2,2
+256,Newfoundland,10,10,10
+257,Great Pyrenees,8,8,8
+258,Samoyed,3,3,3
+259,Pomeranian,2,2,2
+260,chow,3,3,3
+261,keeshond,3,3,3
+262,Brabancon griffon,1,1,1
+263,Pembroke,25,25,25
+264,Cardigan,5,5,5
+265,toy poodle,25,25,25
+266,miniature poodle,21,21,21
+267,standard poodle,20,20,20
+268,Mexican hairless,1,1,1
+269,timber wolf,21,21,21
+270,white wolf,13,13,13
+271,red wolf,5,5,5
+272,coyote,14,14,14
+273,dingo,8,8,8
+274,dhole,1,1,1
+275,African hunting dog,4,4,4
+276,hyena,12,12,12
+277,red fox,22,22,22
+278,kit fox,9,9,9
+279,Arctic fox,12,12,12
+280,grey fox,16,16,16
+281,tabby,26,26,26
+282,tiger cat,10,10,10
+283,Persian cat,1,1,1
+284,Siamese cat,1,1,1
+285,Egyptian cat,4,4,4
+286,cougar,1,1,1
+287,lynx,2,2,2
+288,leopard,7,7,7
+289,snow leopard,20,20,20
+290,jaguar,8,8,8
+291,lion,1,1,1
+292,tiger,34,34,34
+293,cheetah,3,3,3
+294,brown bear,3,3,3
+295,American black bear,8,8,8
+296,ice bear,1,1,1
+297,sloth bear,1,1,1
+298,mongoose,1,1,1
+299,meerkat,33,33,33
+300,tiger beetle,14,14,14
+301,ladybug,22,22,22
+302,ground beetle,6,6,6
+303,long-horned beetle,3,3,3
+304,leaf beetle,8,8,8
+305,dung beetle,3,3,3
+306,rhinoceros beetle,1,1,1
+307,weevil,1,1,1
+308,fly,1,1,1
+309,bee,2,2,2
+310,ant,2,2,2
+311,grasshopper,30,30,30
+312,cricket,18,18,18
+313,walking stick,1,1,1
+314,cockroach,1,1,1
+315,mantis,2,2,2
+316,cicada,1,1,1
+317,leafhopper,1,1,1
+318,lacewing,1,1,1
+319,dragonfly,21,21,21
+320,damselfly,15,15,15
+321,admiral,1,1,1
+322,ringlet,2,2,2
+323,monarch,2,2,2
+324,cabbage butterfly,1,1,1
+325,sulphur butterfly,1,1,1
+326,lycaenid,1,1,1
+327,starfish,1,1,1
+328,sea urchin,2,2,2
+329,sea cucumber,4,3,3
+330,wood rabbit,14,14,14
+331,hare,1,1,1
+332,Angora,1,1,1
+333,hamster,2,2,2
+334,porcupine,1,1,1
+335,fox squirrel,1,1,1
+336,marmot,2,2,2
+337,beaver,3,3,3
+338,guinea pig,1,1,1
+339,sorrel,1,1,1
+340,zebra,1,1,1
+341,hog,2,2,2
+342,wild boar,25,25,25
+343,warthog,10,10,10
+344,hippopotamus,2,1,1
+345,ox,13,13,13
+346,water buffalo,10,10,10
+347,bison,1,1,1
+348,ram,18,18,18
+349,bighorn,20,20,20
+350,ibex,1,1,1
+351,hartebeest,2,2,2
+352,impala,18,18,18
+353,gazelle,10,10,10
+354,Arabian camel,1,1,1
+355,llama,1,1,1
+356,weasel,16,16,16
+357,mink,15,15,15
+358,polecat,8,8,8
+359,black-footed ferret,24,24,24
+360,otter,3,3,3
+361,skunk,2,1,1
+362,badger,1,1,1
+363,armadillo,1,1,1
+364,three-toed sloth,2,1,1
+365,orangutan,3,2,2
+366,gorilla,3,3,3
+367,chimpanzee,1,1,1
+368,gibbon,11,11,11
+369,siamang,15,15,15
+370,guenon,4,4,4
+371,patas,4,4,4
+372,baboon,6,6,6
+373,macaque,10,10,10
+374,langur,8,8,8
+375,colobus,1,1,1
+376,proboscis monkey,1,1,1
+377,marmoset,13,13,13
+378,capuchin,13,13,13
+379,howler monkey,8,8,8
+380,titi,3,3,3
+381,spider monkey,7,7,7
+382,squirrel monkey,31,31,31
+383,Madagascar cat,26,25,25
+384,indri,3,3,3
+385,Indian elephant,19,19,19
+386,African elephant,26,26,26
+387,lesser panda,1,1,1
+388,giant panda,1,1,1
+389,barracouta,4,4,4
+390,eel,8,8,8
+391,coho,3,3,3
+392,rock beauty,1,1,1
+393,anemone fish,10,10,10
+394,sturgeon,1,1,1
+395,gar,3,2,2
+396,lionfish,1,1,1
+397,puffer,1,1,1
+398,abacus,1,1,1
+399,abaya,5,5,5
+400,academic gown,16,16,16
+401,accordion,1,1,1
+402,acoustic guitar,5,5,5
+403,aircraft carrier,1,1,1
+404,airliner,15,15,15
+405,airship,1,1,1
+406,altar,10,10,10
+407,ambulance,1,1,1
+408,amphibian,3,3,3
+409,analog clock,20,20,20
+410,apiary,6,5,5
+411,apron,5,5,5
+412,ashcan,16,16,16
+413,assault rifle,15,15,15
+414,backpack,3,3,3
+415,bakery,6,6,6
+416,balance beam,7,7,7
+417,balloon,2,1,1
+418,ballpoint,10,10,10
+419,Band Aid,1,1,1
+420,banjo,1,1,1
+421,bannister,8,8,8
+422,barbell,4,4,4
+423,barber chair,20,20,20
+424,barbershop,18,18,18
+425,barn,1,1,1
+426,barometer,2,2,2
+427,barrel,10,9,9
+428,barrow,1,1,1
+429,baseball,5,5,5
+430,basketball,3,2,2
+431,bassinet,17,17,17
+432,bassoon,1,1,1
+433,bathing cap,1,1,1
+434,bath towel,4,4,4
+435,bathtub,30,30,30
+436,beach wagon,5,5,5
+437,beacon,4,4,4
+438,beaker,5,5,5
+439,bearskin,3,3,3
+440,beer bottle,8,8,8
+441,beer glass,4,4,4
+442,bell cote,11,11,11
+443,bib,2,2,2
+444,bicycle-built-for-two,2,2,2
+445,bikini,9,9,9
+446,binder,7,7,7
+447,binoculars,2,2,2
+448,birdhouse,2,2,2
+449,boathouse,5,5,5
+450,bobsled,1,1,1
+451,bolo tie,3,2,2
+452,bonnet,4,4,4
+453,bookcase,10,10,10
+454,bookshop,6,6,6
+455,bottlecap,2,2,2
+456,bow,3,2,2
+457,bow tie,1,1,1
+458,brass,1,1,1
+459,brassiere,3,3,3
+460,breakwater,6,6,6
+461,breastplate,21,21,21
+462,broom,4,4,4
+463,bucket,7,7,7
+464,buckle,10,10,10
+465,bulletproof vest,2,1,1
+466,bullet train,1,1,1
+467,butcher shop,1,1,1
+468,cab,3,3,3
+469,caldron,2,2,2
+470,candle,1,1,1
+471,cannon,1,1,1
+472,canoe,13,12,12
+473,can opener,14,14,14
+474,cardigan,5,5,5
+475,car mirror,1,1,1
+476,carousel,1,1,1
+477,carpenter's kit,7,7,7
+478,carton,4,4,4
+479,car wheel,12,12,12
+480,cash machine,2,2,2
+481,cassette,19,19,19
+482,cassette player,9,9,9
+483,castle,3,3,3
+484,catamaran,11,11,11
+485,CD player,21,21,21
+486,cello,7,7,7
+487,cellular telephone,16,16,16
+488,chain,17,17,17
+489,chainlink fence,8,8,8
+490,chain mail,2,2,2
+491,chain saw,1,1,1
+492,chest,3,3,3
+493,chiffonier,2,2,2
+494,chime,7,6,6
+495,china cabinet,2,2,2
+496,Christmas stocking,1,1,1
+497,church,8,8,8
+498,cinema,2,2,2
+499,cleaver,2,2,2
+500,cliff dwelling,1,1,1
+501,cloak,5,5,5
+502,clog,13,13,13
+503,cocktail shaker,2,2,2
+504,coffee mug,10,10,10
+505,coffeepot,27,27,27
+506,coil,16,15,15
+507,combination lock,1,1,1
+508,computer keyboard,24,24,24
+509,confectionery,11,11,11
+510,container ship,1,1,1
+511,convertible,6,6,6
+512,corkscrew,2,2,2
+513,cornet,4,4,4
+514,cowboy boot,3,2,2
+515,cowboy hat,16,16,16
+516,cradle,14,14,14
+517,crane,6,5,5
+518,crash helmet,3,3,3
+519,crate,2,2,2
+520,crib,17,17,17
+521,Crock Pot,1,1,1
+522,croquet ball,1,1,1
+523,crutch,1,1,1
+524,cuirass,24,24,24
+525,dam,1,1,1
+526,desk,14,14,14
+527,desktop computer,13,13,13
+528,dial telephone,2,2,2
+529,diaper,3,3,3
+530,digital clock,3,3,3
+531,digital watch,21,21,21
+532,dining table,6,6,6
+533,dishrag,1,1,1
+534,dishwasher,4,3,3
+535,disk brake,3,3,3
+536,dock,9,9,9
+537,dogsled,7,7,7
+538,dome,11,11,11
+539,doormat,4,4,4
+540,drilling platform,1,1,1
+541,drum,7,7,7
+542,drumstick,6,6,6
+543,dumbbell,26,25,25
+544,Dutch oven,4,4,4
+545,electric fan,1,1,1
+546,electric guitar,11,11,11
+547,electric locomotive,3,3,3
+548,entertainment center,2,2,2
+549,envelope,10,10,10
+550,espresso maker,3,3,3
+551,face powder,2,2,2
+552,feather boa,1,1,1
+553,file,3,3,3
+554,fireboat,1,1,1
+555,fire engine,2,2,2
+556,fire screen,3,2,2
+557,flagpole,4,4,4
+558,flute,7,7,7
+559,folding chair,1,1,1
+560,football helmet,2,2,2
+561,forklift,1,1,1
+562,fountain,3,2,2
+563,fountain pen,4,4,4
+564,four-poster,1,1,1
+565,freight car,1,1,1
+566,French horn,1,1,1
+567,frying pan,10,10,10
+568,fur coat,1,1,1
+569,garbage truck,1,1,1
+570,gasmask,5,5,5
+571,gas pump,2,2,2
+572,goblet,1,1,1
+573,go-kart,2,2,2
+574,golf ball,1,1,1
+575,golfcart,1,1,1
+576,gondola,1,1,1
+577,gong,44,44,44
+578,gown,17,17,17
+579,grand piano,3,3,3
+580,greenhouse,1,1,1
+581,grille,7,6,6
+582,grocery store,12,12,12
+583,guillotine,0,0,0
+584,hair slide,14,14,14
+585,hair spray,8,8,8
+586,half track,1,1,1
+587,hammer,4,4,4
+588,hamper,6,6,6
+589,hand blower,6,6,6
+590,hand-held computer,2,2,2
+591,handkerchief,3,3,3
+592,hard disc,1,1,1
+593,harmonica,4,4,4
+594,harp,1,1,1
+595,harvester,16,16,16
+596,hatchet,10,10,10
+597,holster,2,2,2
+598,home theater,5,5,5
+599,honeycomb,17,17,17
+600,hook,6,6,6
+601,hoopskirt,13,13,13
+602,horizontal bar,10,10,10
+603,horse cart,2,2,2
+604,hourglass,2,1,1
+605,iPod,1,1,1
+606,iron,4,4,4
+607,jack-o'-lantern,2,1,1
+608,jean,1,1,1
+609,jeep,1,1,1
+610,jersey,5,5,5
+611,jigsaw puzzle,1,1,1
+612,jinrikisha,1,1,1
+613,joystick,2,2,2
+614,kimono,1,1,1
+615,knee pad,3,3,3
+616,knot,1,1,1
+617,lab coat,1,1,1
+618,ladle,10,10,10
+619,lampshade,29,29,29
+620,laptop,18,18,18
+621,lawn mower,2,2,2
+622,lens cap,1,1,1
+623,letter opener,8,8,8
+624,library,8,8,8
+625,lifeboat,1,1,1
+626,lighter,4,4,4
+627,limousine,2,2,2
+628,liner,1,1,1
+629,lipstick,1,1,1
+630,Loafer,4,4,4
+631,lotion,11,11,11
+632,loudspeaker,10,9,9
+633,loupe,5,5,5
+634,lumbermill,1,1,1
+635,magnetic compass,1,1,1
+636,mailbag,14,14,14
+637,mailbox,1,1,1
+638,maillot,4,4,4
+639,maillot,18,18,18
+640,manhole cover,1,1,1
+641,maraca,3,3,3
+642,marimba,1,1,1
+643,mask,1,1,1
+644,matchstick,3,3,3
+645,maypole,1,1,1
+646,maze,2,2,2
+647,measuring cup,1,1,1
+648,medicine chest,7,7,7
+649,megalith,2,1,1
+650,microphone,5,5,5
+651,microwave,8,8,8
+652,military uniform,2,2,2
+653,milk can,2,2,2
+654,minibus,7,7,7
+655,miniskirt,8,8,8
+656,minivan,6,6,6
+657,missile,30,30,30
+658,mitten,1,1,1
+659,mixing bowl,3,3,3
+660,mobile home,1,1,1
+661,Model T,1,1,1
+662,modem,5,5,5
+663,monastery,6,6,6
+664,monitor,12,12,12
+665,moped,3,3,3
+666,mortar,2,1,1
+667,mortarboard,18,18,18
+668,mosque,2,2,2
+669,mosquito net,1,1,1
+670,motor scooter,24,24,24
+671,mountain bike,17,17,17
+672,mountain tent,1,1,1
+673,mouse,9,9,9
+674,mousetrap,3,3,3
+675,moving van,4,4,4
+676,muzzle,1,1,1
+677,nail,10,10,10
+678,neck brace,2,2,2
+679,necklace,18,18,18
+680,nipple,5,4,4
+681,notebook,17,17,17
+682,obelisk,2,2,2
+683,oboe,8,8,8
+684,ocarina,5,5,5
+685,odometer,1,1,1
+686,oil filter,3,3,3
+687,organ,1,1,1
+688,oscilloscope,1,1,1
+689,overskirt,10,10,10
+690,oxcart,23,23,23
+691,oxygen mask,4,4,4
+692,packet,8,8,8
+693,paddle,27,27,27
+694,paddlewheel,1,1,1
+695,padlock,8,8,8
+696,paintbrush,6,6,6
+697,pajama,1,1,1
+698,palace,6,6,6
+699,panpipe,1,1,1
+700,paper towel,16,16,16
+701,parachute,1,1,1
+702,parallel bars,16,16,16
+703,park bench,2,2,2
+704,parking meter,2,2,2
+705,passenger car,6,6,6
+706,patio,6,6,6
+707,pay-phone,3,3,3
+708,pedestal,6,6,6
+709,pencil box,10,10,10
+710,pencil sharpener,5,4,4
+711,perfume,2,2,2
+712,Petri dish,2,1,1
+713,photocopier,1,1,1
+714,pick,2,2,2
+715,pickelhaube,3,3,3
+716,picket fence,3,3,3
+717,pickup,1,1,1
+718,pier,13,13,13
+719,piggy bank,1,1,1
+720,pill bottle,2,2,2
+721,pillow,2,2,2
+722,ping-pong ball,3,3,3
+723,pinwheel,1,1,1
+724,pirate,2,2,2
+725,pitcher,14,14,14
+726,plane,4,4,4
+727,planetarium,4,4,4
+728,plastic bag,3,3,3
+729,plate rack,1,1,1
+730,plow,6,6,6
+731,plunger,2,2,2
+732,Polaroid camera,1,1,1
+733,pole,12,12,12
+734,police van,2,2,2
+735,poncho,1,1,1
+736,pool table,1,1,1
+737,pop bottle,7,7,7
+738,pot,1,1,1
+739,potter's wheel,2,2,2
+740,power drill,2,2,2
+741,prayer rug,1,1,1
+742,printer,8,8,8
+743,prison,13,13,13
+744,projectile,17,17,17
+745,projector,5,5,5
+746,puck,4,4,4
+747,punching bag,3,2,2
+748,purse,17,17,17
+749,quill,3,2,2
+750,quilt,6,6,6
+751,racer,19,19,19
+752,racket,16,16,16
+753,radiator,2,1,1
+754,radio,10,10,10
+755,radio telescope,5,5,5
+756,rain barrel,12,12,12
+757,recreational vehicle,1,1,1
+758,reel,5,5,5
+759,reflex camera,13,13,13
+760,refrigerator,4,4,4
+761,remote control,5,5,5
+762,restaurant,4,4,4
+763,revolver,1,1,1
+764,rifle,18,18,18
+765,rocking chair,1,1,1
+766,rotisserie,3,2,2
+767,rubber eraser,15,15,15
+768,rugby ball,4,4,4
+769,rule,3,3,3
+770,running shoe,1,1,1
+771,safe,5,5,5
+772,safety pin,4,4,4
+773,saltshaker,3,3,3
+774,sandal,15,14,14
+775,sarong,1,1,1
+776,sax,5,5,5
+777,scabbard,12,12,12
+778,scale,3,3,3
+779,school bus,1,1,1
+780,schooner,11,11,11
+781,scoreboard,1,1,1
+782,screen,7,7,7
+783,screw,1,1,1
+784,screwdriver,6,6,6
+785,seat belt,3,2,2
+786,sewing machine,1,1,1
+787,shield,5,4,4
+788,shoe shop,2,2,2
+789,shoji,1,1,1
+790,shopping basket,6,6,6
+791,shopping cart,20,20,20
+792,shovel,5,5,5
+793,shower cap,1,1,1
+794,shower curtain,2,2,2
+795,ski,3,3,3
+796,ski mask,12,12,12
+797,sleeping bag,4,4,4
+798,slide rule,1,1,1
+799,sliding door,6,6,6
+800,slot,1,1,1
+801,snorkel,3,3,3
+802,snowmobile,1,1,1
+803,snowplow,1,1,1
+804,soap dispenser,8,8,8
+805,soccer ball,4,4,4
+806,sock,1,1,1
+807,solar dish,2,1,1
+808,sombrero,2,1,1
+809,soup bowl,17,17,17
+810,space bar,18,18,18
+811,space heater,10,10,10
+812,space shuttle,1,1,1
+813,spatula,7,7,7
+814,speedboat,1,1,1
+815,spider web,18,18,18
+816,spindle,1,1,1
+817,sports car,12,12,12
+818,spotlight,9,9,9
+819,stage,11,11,11
+820,steam locomotive,1,1,1
+821,steel arch bridge,3,3,3
+822,steel drum,2,1,1
+823,stethoscope,3,3,3
+824,stole,11,11,11
+825,stone wall,1,1,1
+826,stopwatch,8,8,8
+827,stove,15,15,15
+828,strainer,7,7,7
+829,streetcar,10,10,10
+830,stretcher,2,1,1
+831,studio couch,3,3,3
+832,stupa,1,1,1
+833,submarine,1,1,1
+834,suit,16,16,16
+835,sundial,2,2,2
+836,sunglass,18,18,18
+837,sunglasses,12,12,12
+838,sunscreen,14,14,14
+839,suspension bridge,3,3,3
+840,swab,7,7,7
+841,sweatshirt,3,3,3
+842,swimming trunks,8,8,8
+843,swing,1,1,1
+844,switch,4,4,4
+845,syringe,1,1,1
+846,table lamp,11,11,11
+847,tank,2,2,2
+848,tape player,16,16,16
+849,teapot,12,12,12
+850,teddy,6,6,6
+851,television,9,9,9
+852,tennis ball,9,9,9
+853,thatch,1,1,1
+854,theater curtain,1,1,1
+855,thimble,1,1,1
+856,thresher,12,12,12
+857,throne,1,1,1
+858,tile roof,1,1,1
+859,toaster,1,1,1
+860,tobacco shop,5,5,5
+861,toilet seat,13,13,13
+862,torch,1,1,1
+863,totem pole,8,8,8
+864,tow truck,1,1,1
+865,toyshop,10,10,10
+866,tractor,23,23,23
+867,trailer truck,6,6,6
+868,tray,18,16,16
+869,trench coat,1,1,1
+870,tricycle,2,2,2
+871,trimaran,13,13,13
+872,tripod,1,1,1
+873,triumphal arch,1,1,1
+874,trolleybus,1,1,1
+875,trombone,10,10,10
+876,tub,14,14,14
+877,turnstile,1,1,1
+878,typewriter keyboard,23,23,23
+879,umbrella,2,2,2
+880,unicycle,1,1,1
+881,upright,7,7,7
+882,vacuum,1,1,1
+883,vase,19,19,19
+884,vault,9,9,9
+885,velvet,12,12,12
+886,vending machine,1,1,1
+887,vestment,1,1,1
+888,viaduct,1,1,1
+889,violin,21,21,21
+890,volleyball,2,2,2
+891,waffle iron,4,3,3
+892,wall clock,23,23,23
+893,wallet,19,19,19
+894,wardrobe,5,5,5
+895,warplane,19,19,19
+896,washbasin,12,12,12
+897,washer,1,1,1
+898,water bottle,8,8,8
+899,water jug,6,6,6
+900,water tower,1,1,1
+901,whiskey jug,1,1,1
+902,whistle,2,2,2
+903,wig,1,1,1
+904,window screen,4,4,4
+905,window shade,4,4,4
+906,Windsor tie,6,6,6
+907,wine bottle,20,20,20
+908,wing,3,3,3
+909,wok,13,13,13
+910,wooden spoon,8,8,8
+911,wool,10,10,10
+912,worm fence,2,2,2
+913,wreck,2,2,2
+914,yawl,5,5,5
+915,yurt,1,1,1
+916,web site,1,1,1
+917,comic book,5,5,5
+918,crossword puzzle,2,2,2
+919,street sign,2,2,2
+920,traffic light,2,2,2
+921,book jacket,8,8,8
+922,menu,1,1,1
+923,plate,9,9,9
+924,guacamole,1,1,1
+925,consomme,3,3,3
+926,hot pot,9,9,9
+927,trifle,1,1,1
+928,ice cream,5,5,5
+929,ice lolly,4,1,1
+930,French loaf,2,2,2
+931,bagel,1,1,1
+932,pretzel,1,1,1
+933,cheeseburger,2,2,2
+934,hotdog,1,1,1
+935,mashed potato,5,5,5
+936,head cabbage,2,2,2
+937,broccoli,3,3,3
+938,cauliflower,1,1,1
+939,zucchini,3,3,3
+940,spaghetti squash,4,4,4
+941,acorn squash,2,2,2
+942,butternut squash,4,4,4
+943,cucumber,6,6,6
+944,artichoke,5,5,5
+945,bell pepper,1,1,1
+946,cardoon,14,14,14
+947,mushroom,13,13,13
+948,Granny Smith,2,2,2
+949,strawberry,5,5,5
+950,orange,15,15,15
+951,lemon,5,5,5
+952,fig,1,1,1
+953,pineapple,1,1,1
+954,banana,3,2,2
+955,jackfruit,1,1,1
+956,custard apple,1,1,1
+957,pomegranate,1,1,1
+958,hay,1,1,1
+959,carbonara,1,1,1
+960,chocolate sauce,19,19,19
+961,dough,2,2,2
+962,meat loaf,1,1,1
+963,pizza,2,2,2
+964,potpie,1,1,1
+965,burrito,2,2,2
+966,red wine,11,11,11
+967,espresso,3,3,3
+968,cup,8,8,8
+969,eggnog,3,2,2
+970,alp,11,11,11
+971,bubble,2,1,1
+972,cliff,10,10,10
+973,coral reef,15,15,15
+974,geyser,1,1,1
+975,lakeside,8,8,8
+976,promontory,5,5,5
+977,sandbar,4,4,4
+978,seashore,11,11,11
+979,valley,5,5,5
+980,volcano,1,1,1
+981,ballplayer,22,22,22
+982,groom,11,11,11
+983,scuba diver,12,12,12
+984,rapeseed,1,1,1
+985,daisy,1,1,1
+986,yellow lady's slipper,1,1,1
+987,corn,23,23,23
+988,acorn,1,1,1
+989,hip,2,1,1
+990,buckeye,1,1,1
+991,coral fungus,1,1,1
+992,agaric,27,27,27
+993,gyromitra,1,1,1
+994,stinkhorn,1,1,1
+995,earthstar,1,1,1
+996,hen-of-the-woods,3,3,3
+997,bolete,17,17,17
+998,ear,21,21,21
+999,toilet tissue,16,16,16

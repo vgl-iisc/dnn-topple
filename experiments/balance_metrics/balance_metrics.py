@@ -25,7 +25,7 @@ from matplotlib.category import UnitData
 from multiprocessing import Pool, cpu_count, log_to_stderr
 import logging
 
-METRICS = ["average_branching_factor", "colless_index", "sackin_index", "total_volume", "missing_colless_frac"]
+METRICS = ["average_branching_factor", "colless_index", "sackin_index", "average_sackin_index", "total_volume", "missing_colless_frac"]
 # THRESH_SELECTION = "valley=classes"
 THRESH_SELECTION = 1e-6
 
