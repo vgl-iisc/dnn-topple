@@ -8,6 +8,7 @@ from knn_graph import compute_knn_graph
 # from rn_graph import compute_rn_graph
 
 import os
+import re
 
 from sys import argv
 import numpy as np
@@ -20,7 +21,10 @@ from timeit import default_timer as timer
 import pickle
 import logging
 
-CPUS = cpu_count() - 6
+CPUS = 1
+
+# Matches chunk files produced by run_inference.py: a{tag}_e{epoch}_chunk{n}.pt
+CHUNK_RE = re.compile(r'^(a.+_e\d+)_chunk(\d+)\.pt$')
 
 def save_name_txt(file, k, connected):
     return f"adj_{file[len('vectors_'):-4]}_{k}" + ("_connected" if connected else "")
@@ -28,46 +32,89 @@ def save_name_txt(file, k, connected):
 def save_name_pt(file, k, connected):
     return f"adj_{os.path.splitext(file)[0]}_{k}" + ("_connected" if connected else "")
 
+def _available_memory_bytes():
+    try:
+        import psutil
+        return psutil.virtual_memory().available
+    except ImportError:
+        return None
+
+def _group_chunks(files):
+    """Split files into chunk groups (base -> sorted filenames) and non-chunk files."""
+    chunk_groups = {}
+    non_chunk = []
+    for f in files:
+        m = CHUNK_RE.match(f)
+        if m:
+            chunk_groups.setdefault(m.group(1), []).append(f)
+        else:
+            non_chunk.append(f)
+    for base in chunk_groups:
+        chunk_groups[base].sort(key=lambda f: int(CHUNK_RE.match(f).group(2)))
+
+    logging.info(f"Grouped {len(files)} files into {len(chunk_groups)} chunk groups and {len(non_chunk)} non-chunk files")
+    return chunk_groups, non_chunk
+
 def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method):
         times = {}
         log = get_logger()
 
-        for tensor_file in files:
+        chunk_groups, non_chunk_files = _group_chunks(files)
+
+        # Build a unified work list: (tensor_file, save_name_fn, data_loader)
+        # data_loader is a zero-arg callable that returns a numpy array, or None if skipped.
+        work = []
+
+        for tensor_file in non_chunk_files:
             tensor_path = os.path.join(root, tensor_file)
-            
-            save_name_fn = save_name_txt
             if tensor_path.endswith('.pt'):
-                data = torch.load(tensor_path).numpy()
-                save_name_fn = save_name_pt
+                work.append((tensor_file, save_name_pt, lambda p=tensor_path: torch.load(p, weights_only=True).numpy()))
             else:
-                data = np.loadtxt(tensor_path)
+                work.append((tensor_file, save_name_txt, lambda p=tensor_path: np.loadtxt(p)))
 
-            log.info(f"{id}: Loaded data from {tensor_path} with shape {data.shape}")
-            
-            if data.shape not in times:
-                times[data.shape] = []
+        for base, chunk_files in chunk_groups.items():
+            tensor_file = f"{base}.pt"
+            chunk_paths = [os.path.join(root, f) for f in chunk_files]
+            total_bytes = sum(os.path.getsize(p) for p in chunk_paths)
+            avail = _available_memory_bytes()
+            if avail is not None and total_bytes > avail * 0.8:
+                log.info(
+                    f"{id}: Skipping {tensor_file} (chunked): "
+                    f"total size {total_bytes/1e9:.2f} GB exceeds 80% of available memory {avail/1e9:.2f} GB"
+                )
+                continue
+            def _load_chunks(paths=chunk_paths, t_file=tensor_file, bytes_=total_bytes):
+                log.info(f"{id}: Stitching {len(paths)} chunks for {t_file} (~{bytes_/1e9:.2f} GB)")
+                chunks = [torch.load(p, weights_only=True) for p in paths]
+                data = torch.cat(chunks).numpy()
+                del chunks
+                return data
+            work.append((tensor_file, save_name_pt, _load_chunks))
 
-            if not complexes_dir.endswith("/") and data_dir.endswith("/"):
-                complexes_dir += '/'
+        if not complexes_dir.endswith("/") and data_dir.endswith("/"):
+            complexes_dir += '/'
+
+        for tensor_file, save_name_fn, load_data in work:
+            tensor_path = os.path.join(root, tensor_file)
 
             save_basepath = root.replace(data_dir, complexes_dir).replace(f"Tensors{os.sep}", f"")
             os.makedirs(save_basepath, exist_ok=True)
-            
+
             possible_save_names = [save_name_fn(tensor_file, max_k, b) for b in [True, False]]
             save_paths = [os.path.join(save_basepath, f"{name}.txt") for name in possible_save_names]
             if any(os.path.exists(path) for path in save_paths):
                 log.info(f"{id}: Found existing files for {tensor_path} with k={max_k}, skipping")
                 continue
 
-            # if method == 'r':
+            data = load_data()
+            log.info(f"{id}: Loaded data from {tensor_path} with shape {data.shape}")
+
+            if data.shape not in times:
+                times[data.shape] = []
+
             if method == 'r':
                 start = timer()
                 raise NotImplementedError()
-                # try:
-                #     Gmax = compute_rn_graph(data, complexity=75, graph_degree=60, num_threads=1, prefix=str(id))
-                # except Exception as e:
-                #     log.error(f"{id}: Error computing RN graph for {tensor_path}: {e}")
-                #     continue
             else:
                 start = timer()
                 Gmax = compute_knn_graph(data, n_neighbors=max_k)
@@ -109,18 +156,22 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
 
 def main():
     if len(argv) < 5:
-        print("Usage: python compute_knn_complexes.py <data_dir> <complexes_dir> <max_k> <r|k> (rng vs knn) [ignore_splits]")
+        print("Usage: python compute_knn_complexes.py <data_dir> <complexes_dir> <max_k> <r|k> (rng vs knn) [ignore_splits] [ignore_tags]")
         return
     
     ignore_splits = []
     if len(argv) >= 6:
         ignore_splits = argv[5].split(",")
+
+    ignore_tags = []
+    if len(argv) >= 7:
+        ignore_tags = argv[6].split(",")
     
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(processName)s - %(levelname)s: %(message)s')
 
     log_to_stderr(logging.INFO)
 
-    logging.info(f"Starting k-NN complex computation with ignore_splits={ignore_splits}")
+    logging.info(f"Starting k-NN complex computation with ignore_splits={ignore_splits} and ignore_tags={ignore_tags}")
 
     data_dir = argv[1]
     complexes_dir = argv[2]
@@ -149,7 +200,7 @@ def main():
             continue
 
         tensor_files = [f for f in files if f.startswith("vectors_") and f.endswith(".txt")]
-        tensor_files_2 = [f for f in files if f.endswith(".pt")]
+        tensor_files_2 = [f for f in files if f.endswith(".pt") and ignore_tags[0] not in f]
 
         if len(tensor_files_2) > 0:
             tensor_files = tensor_files_2

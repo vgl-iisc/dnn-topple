@@ -30,6 +30,9 @@ def compute_knn_graph(data: np.ndarray, n_neighbors=5) -> nx.Graph:
         The mode to use for the graph. Options are 'connectivity' or 'distance'.
     """
 
+    if data.ndim > 2:
+        data = data.reshape(data.shape[0], -1)
+
     adj = kneighbors_graph(data, n_neighbors=n_neighbors, mode="connectivity", include_self=False)
 
     G = nx.from_scipy_sparse_array(adj)

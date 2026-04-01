@@ -7,9 +7,18 @@ epochs:
 
 collect:
   resnet50pt:
+    - path: conv1
+      tag: conv1
+    - path: layer1
+      tag: layer1
+    - path: layer2
+      tag: layer2
+    - path: layer3
+      tag: layer3
+    - path: layer4
+      tag: layer4
     - path: fc
-      tag: 1
-
+      tag: penultimate
 
 runs:
   resnet50pt_imagenetsb:
@@ -20,5 +29,7 @@ do:
   - resnet50pt_imagenetsb
 
 checkpoints_dir: null
-save_dir: /media/santripta/data2/Inference_imagenet/landscape_data_cross_epoch/
+save_dir: /media/santripta/data2/ImagenetPTInference/landscape_data/
+save_every_batches: 120
+ds_subsample: 130000
 device: cuda:0
