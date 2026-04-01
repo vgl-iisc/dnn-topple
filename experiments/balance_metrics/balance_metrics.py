@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import torch
 
 import os
 import sys
@@ -16,7 +17,7 @@ from lmfit.models import ExponentialModel
 import scipy.stats as stats
 
 from utils import rooted_tree_from_exp
-from experiment import Dataset, LossLandscapeExperiment, find_all_datasets, find_all_experiments
+from experiment import Dataset, LossLandscapeExperiment, find_all_datasets, find_all_experiments, find_all_bert_experiments, BertExperiment
 
 import matplotlib.pyplot as plt
 from matplotlib.category import UnitData
@@ -24,7 +25,7 @@ from matplotlib.category import UnitData
 from multiprocessing import Pool, cpu_count, log_to_stderr
 import logging
 
-METRICS = ["average_branching_factor", "colless_index", "sackin_index", "total_volume", "missing_colless_frac"]
+METRICS = ["average_branching_factor", "colless_index", "sackin_index", "average_sackin_index", "total_volume", "missing_colless_frac"]
 # THRESH_SELECTION = "valley=classes"
 THRESH_SELECTION = 1e-6
 
@@ -195,7 +196,7 @@ def compute_correlations(data: pd.DataFrame, out_csv: str | None = None, ignore_
 			'train_spearman': train_spearman,
 			'val_spearman': val_spearman
 		}
-  
+    
 	by_dataset = data.groupby('dataset')
 	for ds_name, group in by_dataset:
 		group = ignore_outliers(group, ignore_percentile=ignore_percentile, ignore_std=ignore_std)
@@ -505,7 +506,25 @@ def plot_exp_regressions(data: pd.DataFrame, out_dir: str, ignore_percentile: fl
 				out_path=os.path.join(metric_dirs[metric], f'exp_regression_{ds_name}_{model_name}_val_acc_vs_{metric}.png')
 			)
 
-def process_experiment(worker_id: int, experiment, data_dir: str, ct_dir: str, thresh_selection) -> dict:
+def get_bert_accuracy(exp: BertExperiment) -> dict:
+	"""Compute train and val token-level accuracy from raw Labels/Predictions tensors."""
+	def acc_for_split(split: str) -> float:
+		lbl_path  = os.path.join(exp.landscape_dir, "Labels",      split, f"labels_{exp.epoch_tag}.pt")
+		pred_path = os.path.join(exp.landscape_dir, "Predictions", split, f"predictions_{exp.epoch_tag}.pt")
+		if not os.path.exists(lbl_path) or not os.path.exists(pred_path):
+			return np.nan
+		labels = torch.load(lbl_path,  weights_only=True)
+		preds  = torch.load(pred_path, weights_only=True)
+		mask = labels != -100
+		total = mask.sum().item()
+		if total == 0:
+			return np.nan
+		correct = (labels[mask] == preds[mask]).sum().item()
+		return correct / total
+	return {"train_acc": acc_for_split("train"), "val_acc": acc_for_split("val")}
+
+
+def process_experiment(worker_id: int, experiment, data_dir: str, ct_dir: str, train_accuracy_csv: str, val_accuracy_csv: str, thresh_selection) -> dict:
 	"""
 	Worker function to process a single experiment.
 	
@@ -518,6 +537,10 @@ def process_experiment(worker_id: int, experiment, data_dir: str, ct_dir: str, t
 		Path to data directory
 	- ct_dir: str
 		Path to contour trees directory
+	- train_accuracy_csv: str
+		Path to CSV file containing train accuracies per-epoch for non-BERT experiments
+	- val_accuracy_csv: str
+		Path to CSV file containing val accuracies per-epoch for non-BERT experiments
 	- thresh_selection: float or str
 		Threshold selection mode
 	
@@ -553,8 +576,6 @@ def process_experiment(worker_id: int, experiment, data_dir: str, ct_dir: str, t
 		tree = rooted_tree_from_exp(experiment, thresh, data_dir, ct_dir)
 		metrics = tm.compute_tree_imbalance_metrics(tree)
 
-		accuracy = process_file(paths["compiled_res"], experiment.epoch)
-
 		result = {
 			"dataset": experiment.dataset.name,
 			"split": experiment.split,
@@ -566,9 +587,21 @@ def process_experiment(worker_id: int, experiment, data_dir: str, ct_dir: str, t
 			"thresh_mode": str(thresh_selection),
 			**metrics
 		}
-  
-		result["train_acc"] = accuracy.loc[accuracy['Split'] == 'Train', 'accuracy'].values[0] if 'Train' in accuracy['Split'].values else np.nan
-		result["val_acc"] = accuracy.loc[accuracy['Split'] == 'Val', 'accuracy'].values[0] if 'Val' in accuracy['Split'].values else np.nan
+
+		if experiment.is_bert:
+			accuracy = get_bert_accuracy(experiment)
+			result["train_acc"] = accuracy["train_acc"]
+			result["val_acc"] = accuracy["val_acc"]
+		else:
+			if train_accuracy_csv != "" and val_accuracy_csv != "":
+				accuracy_train = pd.read_csv(train_accuracy_csv)
+				accuracy_val = pd.read_csv(val_accuracy_csv)
+				result['train_acc'] = accuracy_train.loc[(accuracy_train['Step'] == experiment.epoch + 1)]["Value"].values[0]
+				result['val_acc'] = accuracy_val.loc[(accuracy_val['Step'] == experiment.epoch + 1)]["Value"].values[0]
+			else:
+				accuracy = process_file(paths["compiled_res"], experiment.epoch)
+				result["train_acc"] = accuracy.loc[accuracy['Split'] == 'Train', 'accuracy'].values[0] if 'Train' in accuracy['Split'].values else np.nan
+				result["val_acc"] = accuracy.loc[accuracy['Split'] == 'Val', 'accuracy'].values[0] if 'Val' in accuracy['Split'].values else np.nan
 		
 		log.info(f"{worker_id}: Completed experiment: {experiment}")
 		return result
@@ -577,14 +610,15 @@ def process_experiment(worker_id: int, experiment, data_dir: str, ct_dir: str, t
 		log.error(f"{worker_id}: Error processing experiment {experiment}: {e}")
 		raise
 
-def main(datasets_dir: str, data_dir: str, ct_dir: str, output_path: str) -> None:
+def main(datasets_dir: str, data_dir: str, ct_dir: str, output_path: str, bert: bool = False, complexes_dir: str = "", train_accuracy_csv: str = "", val_accuracy_csv: str = "") -> None:
 	log_to_stderr(logging.INFO)
 	logger.info("Starting balance metrics computation")
 	
-	datasets = find_all_datasets(datasets_dir)
-	experiments = find_all_experiments(datasets, data_dir, ct_dir)
-	
-	experiments_list = list(experiments)
+	if bert:
+		experiments_list = find_all_bert_experiments(data_dir, ct_dir, complexes_dir)
+	else:
+		datasets = find_all_datasets(datasets_dir)
+		experiments_list = find_all_experiments(datasets, data_dir, ct_dir)
 	logger.info(f"Found {len(experiments_list)} experiments to process")
 	
 	if len(experiments_list) == 0:
@@ -599,7 +633,7 @@ def main(datasets_dir: str, data_dir: str, ct_dir: str, output_path: str) -> Non
 	for i in range(N_workers):
 		worker_experiments = experiments_list[i::N_workers]
 		for experiment in worker_experiments:
-			task_args.append((i, experiment, data_dir, ct_dir, THRESH_SELECTION))
+			task_args.append((i, experiment, data_dir, ct_dir, train_accuracy_csv, val_accuracy_csv, THRESH_SELECTION))
 	
 	logger.info(f"Starting processing: {len(task_args)} total experiments across {N_workers} workers")
 	
@@ -624,13 +658,17 @@ if __name__ == "__main__":
 	import argparse
 
 	parser = argparse.ArgumentParser(description="Compute tree imbalance metrics and correlate with accuracy.")
-	parser.add_argument("datasets_dir", type=str, help="Path to datasets directory.")
+	parser.add_argument("datasets_dir", type=str, help="Path to datasets directory (unused in --bert mode).")
 	parser.add_argument("data_dir", type=str, help="Path to data directory.")
 	parser.add_argument("ct_dir", type=str, help="Path to contour trees directory.")
 	parser.add_argument("output_path", type=str, help="Path to output CSV file.")
+	parser.add_argument("--bert", action="store_true", help="Run in BERT NER mode instead of CNN mode.")
+	parser.add_argument("--complexes-dir", type=str, default="", help="Path to KNN complexes directory (token_coords_*.pt). Required in --bert mode.")
+	parser.add_argument("--train_accuracy_csv", type=str, default="", help="Path to CSV file containing train accuracies per-epoch for non-BERT experiments (optional, only used if --bert is not set).")
+	parser.add_argument("--val_accuracy_csv", type=str, default="", help="Path to CSV file containing val accuracies per-epoch for non-BERT experiments (optional, only used if --bert is not set).")
 
 	args = parser.parse_args()
 
 	print(f"Using threshold selection mode: {THRESH_SELECTION}, writing to {args.output_path}")
 
-	main(args.datasets_dir, args.data_dir, args.ct_dir, args.output_path)
+	main(args.datasets_dir, args.data_dir, args.ct_dir, args.output_path, bert=args.bert, complexes_dir=args.complexes_dir, train_accuracy_csv=args.train_accuracy_csv, val_accuracy_csv=args.val_accuracy_csv)

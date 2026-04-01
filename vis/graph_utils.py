@@ -1,5 +1,5 @@
 from basic_utils import compute_arc_features
-from experiment import LossLandscapeExperiment
+from experiment import LossLandscapeExperiment, BertExperiment
 
 import pyct as ct
 import streamlit as st
@@ -18,7 +18,7 @@ def rooted_tree_from_exp(exp: LossLandscapeExperiment, simpl: float, data_dir: s
     
     return nxg
 
-@st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x))})
+@st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, BertExperiment: BertExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x))})
 def compute_tree_graph(exp: LossLandscapeExperiment, features: list[ct.RichFeature], steiner_mode: str, ego_origin: str, ego_radius: int, simplify_saddles: bool = False):
     useful_nodes = set()
     minima_nodes = set()

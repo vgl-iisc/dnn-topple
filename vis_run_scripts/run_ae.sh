@@ -1,0 +1,1 @@
+streamlit run vis/app.py /c/home/ae_data/strees_ae/ /c/home/ae_data/landscape_data/ datasets/ +model_eq_dataset +no_preds

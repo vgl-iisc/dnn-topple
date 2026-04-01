@@ -30,3 +30,18 @@ wres:
   - a3
   - a2
   - a1
+
+resnet50:
+  - aconv1
+  - alayer1
+  - alayer2
+  - alayer3
+  - alayer4
+  - apenultimate
+
+bert:
+  - alayer3
+  - alayer6
+  - alayer9
+  - alayer11
+  - aclassifier

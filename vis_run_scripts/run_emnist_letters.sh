@@ -1,0 +1,1 @@
+streamlit run vis/app.py /c/home/eurovis_data/strees_emnist_letters_last_best/ /c/home/eurovis_data/landscape_data_emnist_letters_last_best/ datasets/

@@ -1,0 +1,1 @@
+streamlit run vis/app.py /c/home/eurovis_data/strees_cross_epoch_better/ /c/home/eurovis_data/landscape_data_cross_epoch_better/ datasets/ 

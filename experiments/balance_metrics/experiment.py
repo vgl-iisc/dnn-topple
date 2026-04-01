@@ -1,6 +1,125 @@
 import os
+import re
 from glob import glob
 import pandas as pd
+
+NER_LABELS = ['O', 'B-PER', 'I-PER', 'B-ORG', 'I-ORG', 'B-LOC', 'I-LOC', 'B-MISC', 'I-MISC']
+
+_BERT_CTREE_RE = re.compile(r'^ctree_a(.+)_e(\d+)_(\d+)\.order\.dat$')
+
+
+class BertDataset:
+    """Minimal Dataset-compatible representation for BERT NER experiments."""
+
+    def __init__(self, name: str):
+        self.name = name
+        self.path = ""
+        self.classes = NER_LABELS
+        self.size_by_split: dict[str, int] = {}
+        self.labels_by_split: dict[str, list[int]] = {}
+        self.class_size_by_split: dict[str, dict[str, int]] = {}
+        self.largest_class_size_by_split: dict[str, int] = {}
+
+    def get_split_path(self, split: str) -> str:
+        return ""
+
+
+class BertExperiment:
+    """Parallel to LossLandscapeExperiment for BERT NER data (standalone, no streamlit)."""
+
+    is_bert = True
+
+    def __init__(self, dataset: BertDataset, split: str, tag: str, k: int, epoch: int,
+                 landscape_dir: str, ct_dir: str, complexes_dir: str = ""):
+        self.dataset = dataset
+        self.split = split
+        self.tag = tag
+        self.k = k
+        self.epoch = epoch
+        self.landscape_dir = landscape_dir
+        self.ct_dir = ct_dir
+        self.complexes_dir = complexes_dir
+        self.paths = None
+
+        self.layer = f"a{tag}"
+        self.layer_tag = f"a{tag}"
+        self.pretty_layer = tag
+        self.epoch_tag = f"e{epoch}"
+        self.model = "bert"
+        self.model_data = dataset.name
+
+    def __hash__(self) -> int:
+        return hash(("bert", self.dataset.name, self.split, self.tag, self.k, self.epoch))
+
+    def __repr__(self) -> str:
+        return (f"BERT NER {self.dataset.name} ({self.split}),"
+                f" k={self.k}, layer={self.pretty_layer}, epoch={self.epoch}")
+
+    def get_paths(self) -> dict:
+        self.paths = {
+            "ctree": os.path.join(
+                self.ct_dir, self.split,
+                f"ctree_a{self.tag}_{self.epoch_tag}_{self.k}"),
+            "losses": os.path.join(
+                self.landscape_dir, "Losses", self.split, f"losses_{self.epoch_tag}.pt"),
+            "labels": os.path.join(
+                self.landscape_dir, "Labels", self.split, f"labels_{self.epoch_tag}.pt"),
+            "predictions": os.path.join(
+                self.landscape_dir, "Predictions", self.split, f"predictions_{self.epoch_tag}.pt"),
+        }
+        return self.paths
+
+    def validate_paths(self) -> bool:
+        paths = self.get_paths()
+        for key, path in paths.items():
+            if key == "ctree":
+                for ext in ["order.dat", "order.bin", "part.raw", "rg.bin", "rg.dat"]:
+                    if not os.path.exists(f"{path}.{ext}"):
+                        print(f"BERT: Missing ctree file: {path}.{ext}")
+                        return False
+            else:
+                if not os.path.exists(path):
+                    print(f"BERT: Missing {key}: {path}")
+                    return False
+        return True
+
+
+def find_all_bert_experiments(data_dir: str, ct_dir: str, complexes_dir: str = "") -> list[BertExperiment]:
+    """Scan ct_dir for BERT NER experiments (ctree files live in {ct_dir}/{split}/)."""
+    experiments: list[BertExperiment] = []
+    bert_datasets: dict[str, BertDataset] = {}
+
+    if not os.path.isdir(ct_dir):
+        return experiments
+
+    ds_name = os.path.basename(data_dir.rstrip("/\\"))
+
+    for split_name in sorted(os.listdir(ct_dir)):
+        split_dir = os.path.join(ct_dir, split_name)
+        if not os.path.isdir(split_dir):
+            continue
+
+        for fname in sorted(os.listdir(split_dir)):
+            m = _BERT_CTREE_RE.match(fname)
+            if m is None:
+                continue
+
+            tag, epoch_str, k_str = m.group(1), m.group(2), m.group(3)
+
+            if ds_name not in bert_datasets:
+                bert_datasets[ds_name] = BertDataset(ds_name)
+
+            exp = BertExperiment(
+                bert_datasets[ds_name], split_name, tag,
+                int(k_str), int(epoch_str),
+                data_dir, ct_dir, complexes_dir,
+            )
+            if exp.validate_paths():
+                experiments.append(exp)
+                print(f"Found BERT experiment: {exp}")
+
+    return experiments
+
 
 class Dataset:
     def __init__(self, name: str, path: str, classes_path: str, splits: list[str]) -> None:
@@ -48,6 +167,8 @@ class Dataset:
 #         self.name = name
 
 class LossLandscapeExperiment:
+    is_bert = False
+
     def __init__(self, dataset: Dataset, split: str, model: str, k: int, epoch: int, layer: str, landscape_dir: str, ct_dir: str) -> None:
         self.dataset = dataset
         self.split = split
@@ -89,7 +210,7 @@ class LossLandscapeExperiment:
         paths = self.get_paths()
 
         for key, path in paths.items():
-            if key == "tensors":
+            if key in ["tensors", "predictions"]:
                 continue
             
             if key == "ctree":
@@ -104,10 +225,7 @@ class LossLandscapeExperiment:
 
             if not os.path.exists(path):
                 print(f"Path for {key} does not exist: {path}")
-                
-                if key != "compiled_res":  # compiled results is not critical
-                    return False
-            
+                            
         return True
     
 def find_all_datasets(datasets_dir: str) -> dict[str, Dataset]:

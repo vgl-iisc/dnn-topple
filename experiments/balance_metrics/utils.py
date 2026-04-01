@@ -1,12 +1,12 @@
-import streamlit as st
 import numpy as np
 import pyct as ct
+import torch
 
 import os
 from glob import glob
 import pandas as pd
 
-from experiment import Dataset, LossLandscapeExperiment
+from experiment import Dataset, LossLandscapeExperiment, NER_LABELS, BertExperiment
 
 import networkx as nx
 
@@ -80,9 +80,12 @@ def compute_arc_features(exp: LossLandscapeExperiment, simpl: float):
 
     data = topo.ctdata
     partition = get_partition(exp)
-    labels = get_labels(exp)
-    preds = get_preds(exp)
-    class_sizes = [exp.dataset.class_size_by_split[exp.split][cls] for cls in exp.dataset.classes]
+    # labels = get_labels(exp)
+    # preds = get_preds(exp)
+    labels = [0] * len(partition)
+    preds = [0] * len(partition)
+    
+    class_sizes = [100000 for _ in exp.dataset.classes]
 
     features = ct.computeRichFeatures(topo, -1, simpl, partition, labels, preds, class_sizes)  # type: ignore
 
@@ -97,15 +100,46 @@ def make_arc_map(features: list[RichFeature]):
     
     return arc_map
 
-def get_preds(exp: LossLandscapeExperiment) -> list[int]:
+def _bert_token_coords(exp: BertExperiment):
+    """Load (N_valid, 2) token-coords tensor for BERT experiments."""
+    coords_path = os.path.join(
+        exp.complexes_dir, exp.split,
+        f"token_coords_a{exp.tag}_{exp.epoch_tag}.pt",
+    )
+    return torch.load(coords_path, weights_only=True)
+
+
+def get_preds(exp) -> list[int]:
+    if exp.is_bert:
+        preds_2d = torch.load(exp.get_paths()["predictions"], weights_only=True)
+        coords = _bert_token_coords(exp)
+        flat = preds_2d[coords[:, 0], coords[:, 1]].numpy()
+        flat = np.where(flat < 0, 0, flat).astype(int)
+        return flat.tolist()
     pred_path = exp.get_paths()["predictions"]
-    
     with open(pred_path, "rb") as f:
         preds = np.loadtxt(f, dtype=np.int32).reshape(-1)
-    
     return preds.tolist()
 
-def get_labels(exp: LossLandscapeExperiment) -> list[int]:
+
+def get_labels(exp) -> list[int]:
+    if exp.is_bert:
+        labels_2d = torch.load(exp.get_paths()["labels"], weights_only=True)
+        coords = _bert_token_coords(exp)
+        flat = labels_2d[coords[:, 0], coords[:, 1]].numpy()
+        flat = np.where(flat < 0, 0, flat).astype(int)
+        flat_list = flat.tolist()
+        # Populate BertDataset so compute_tree_graph can use labels_by_split
+        split = exp.split
+        ds = exp.dataset
+        counts: dict[str, int] = {cls: 0 for cls in NER_LABELS}
+        for lbl in flat_list:
+            counts[NER_LABELS[lbl]] += 1
+        ds.labels_by_split[split] = flat_list
+        ds.size_by_split[split] = len(flat_list)
+        ds.class_size_by_split[split] = counts
+        ds.largest_class_size_by_split[split] = max(counts.values()) if counts else 0
+        return flat_list
     return exp.dataset.labels_by_split[exp.split]
 
 def get_tree(exp: LossLandscapeExperiment):
@@ -126,12 +160,16 @@ def get_order_and_weights(exp: LossLandscapeExperiment) -> tuple[list[int], list
 
     return order, wts
 
-def get_partition(exp: LossLandscapeExperiment) -> list[int]:
-    count = len(exp.dataset.labels_by_split[exp.split])
-    
+def get_partition(exp) -> list[int]:
+    if exp.is_bert:
+        # Use token_coords length to determine N_valid (avoids dependency on labels_by_split
+        # which may not be populated yet when get_partition is called first).
+        coords = _bert_token_coords(exp)
+        count = len(coords)
+    else:
+        count = len(exp.dataset.labels_by_split[exp.split])
     with open(f"{exp.get_paths()['ctree']}.part.raw", "rb") as f:
         parts = np.fromfile(f, dtype=np.uint32, count=count)
-        
     return parts.tolist()
 
 def get_valley_vs_thresh(exp: LossLandscapeExperiment) -> tuple[list[float], list[int]]:
@@ -167,41 +205,18 @@ def compute_tree_graph(exp: LossLandscapeExperiment, features: list[ct.RichFeatu
     nxg = nx.DiGraph()
     for node_id, node_type, node_fn, node_color in useful_nodes:
         idx = node_id
-        if idx == len(exp.dataset.labels_by_split[exp.split]):
-            idx -= 1
-        cls = exp.dataset.classes[exp.dataset.labels_by_split[exp.split][idx]]
-        nxg.add_node(idx, label=cls, color=node_color, cp_type=node_type, fn_val=node_fn, title=f"ID: {idx}\nLoss: {node_fn}\nClass: {cls}")
+        nxg.add_node(idx)
 
     for i, f in enumerate(features):
-        class_label = exp.dataset.classes[f.majority_class]
-        majority_share = f.major_class_size / f.size if f.size > 0 else 0.0
         nxg.add_edge(
         f.frm,
         f.to,
-        label=f"{f.id}: {class_label} ({f.size})",
-        title=f"ID: {f.id}\nPersistence: {f.pers}\nVolume: {f.size}\nMajority: {class_label}\nMajority Share: {majority_share}",
         color="#888888",
         width=2,
         feature_id=f.id,
         persistence=float(f.pers),
         volume=int(f.size),
-        majority=class_label,
         )
-
-    if steiner_mode != "None":
-        steiner_v = list(minima_nodes) if steiner_mode == "Minima" else list(maxima_nodes)
-        nxg_undir = nx.algorithms.approximation.steiner_tree(nxg.to_undirected(), steiner_v, weight="edge_count")
-        nxg = nxg.subgraph(nxg_undir.nodes).to_directed()
-    
-    if ego_origin != "None":
-        ego_verts = list(minima_nodes) if ego_origin == "Minima" else list(maxima_nodes)
-        full_graph = nx.DiGraph()
-        
-        for v in ego_verts:
-            ego_g = nx.ego_graph(nxg, v, radius=ego_radius, undirected=True)
-            full_graph = nx.compose(full_graph, ego_g)
-            
-        nxg = full_graph
 
     return nxg
 

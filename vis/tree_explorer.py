@@ -1,4 +1,4 @@
-from experiment import LossLandscapeExperiment
+from experiment import LossLandscapeExperiment, BertExperiment
 from coverage_utils import get_class_coverage
 from graph_utils import compute_tree_graph
 from feature import get_type_string
@@ -39,7 +39,7 @@ def render_tree_explorer(id: int):
     
     exp = st.session_state.get(f"selected_experiment_{id}", None)
     
-    @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x)) if x and isinstance(x[0], ct.RichFeature) else hash(tuple(x))})
+    @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, BertExperiment: BertExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x)) if x and isinstance(x[0], ct.RichFeature) else hash(tuple(x))})
     def arc_explorer_plot(exp: LossLandscapeExperiment, features: list[ct.RichFeature], axis_type: str | list[str]) -> alt.Chart:
         
         max_pers = max([f.pers for f in features]) if len(features) > 0 else 1.0

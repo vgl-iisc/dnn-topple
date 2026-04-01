@@ -1,0 +1,1 @@
+streamlit run vis/app.py /c/home/sumatra_llvis_data/strees_pt_sb/ /c/home/sumatra_llvis_data/landscape_data_pt_sb/ datasets/
