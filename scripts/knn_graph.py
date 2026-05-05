@@ -17,7 +17,7 @@ import torch
 from sys import argv
 import os
 
-def compute_knn_graph(data: np.ndarray, n_neighbors=5) -> nx.Graph:
+def compute_knn_graph(data: np.ndarray, n_neighbors=5, metric='e') -> nx.Graph:
     """
     Computes the k-nearest neighbors graph for the given data.
 
@@ -26,14 +26,16 @@ def compute_knn_graph(data: np.ndarray, n_neighbors=5) -> nx.Graph:
         The input data points.
     - n_neighbors: int
         The number of neighbors to use for each sample.
-    - mode: str
-        The mode to use for the graph. Options are 'connectivity' or 'distance'.
+    - metric: str
+        The distance metric to use. Options are 'e' for euclidean or 'c' for cosine.
     """
 
     if data.ndim > 2:
         data = data.reshape(data.shape[0], -1)
 
-    adj = kneighbors_graph(data, n_neighbors=n_neighbors, mode="connectivity", include_self=False)
+    dist = 'euclidean' if metric == 'e' else 'cosine'
+
+    adj = kneighbors_graph(data, n_neighbors=n_neighbors, mode="connectivity", include_self=False, metric=dist)
 
     G = nx.from_scipy_sparse_array(adj)
 

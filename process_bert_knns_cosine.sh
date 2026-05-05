@@ -1,0 +1,16 @@
+# python scripts/compute_knn_complexes_bert.py /media/santripta/data2/BERT/landscape_data/bert_ner_conll/20260324_135211/ /media/santripta/data2/BERT/knn_complexes_cos/ 15 k c train,val >> knns_bert.log 2>&1
+# python scripts/compute_knn_complexes_bert.py /media/santripta/data2/BERT/landscape_data/bert_ner_conll/20260324_135211/ /media/santripta/data2/BERT/knn_complexes_cos/ 25 k c train,val >> knns_bert.log 2>&1
+# python scripts/compute_knn_complexes_bert.py /media/santripta/data2/BERT/landscape_data/bert_ner_conll/20260324_135211/ /media/santripta/data2/BERT/knn_complexes_cos/ 35 k c train,val >> knns_bert.log 2>&1
+# python scripts/compute_knn_complexes_bert.py /media/santripta/data2/BERT/landscape_data/bert_ner_conll/20260324_135211/ /media/santripta/data2/BERT/knn_complexes_cos/ 45 k c train,val >> knns_bert.log 2>&1
+# python scripts/compute_knn_complexes_bert.py /media/santripta/data2/BERT/landscape_data/bert_ner_conll/20260324_135211/ /media/santripta/data2/BERT/knn_complexes_cos/ 50 k c train,val >> knns_bert.log 2>&1
+# python scripts/compute_knn_complexes_bert.py /media/santripta/data2/BERT/landscape_data/bert_ner_conll/20260324_135211/ /media/santripta/data2/BERT/knn_complexes_cos/ 60 k c train,val >> knns_bert.log 2>&1
+# python scripts/compute_knn_complexes_bert.py /media/santripta/data2/BERT/landscape_data/bert_ner_conll/20260324_135211/ /media/santripta/data2/BERT/knn_complexes_cos/ 80 k c train,val >> knns_bert.log 2>&1
+# python scripts/compute_knn_complexes_bert.py /media/santripta/data2/BERT/landscape_data/bert_ner_conll/20260324_135211/ /media/santripta/data2/BERT/knn_complexes_cos/ 100 k c train,val >> knns_bert.log 2>&1
+# python scripts/compute_knn_complexes_bert.py /media/santripta/data2/BERT/landscape_data/bert_ner_conll/20260324_135211/ /media/santripta/data2/BERT/knn_complexes_cos/ 120 k c train,val >> knns_bert.log 2>&1
+# python scripts/compute_knn_complexes_bert.py /media/santripta/data2/BERT/landscape_data/bert_ner_conll/20260324_135211/ /media/santripta/data2/BERT/knn_complexes_cos/ 140 k c train,val >> knns_bert.log 2>&1
+python scripts/compute_knn_complexes_bert.py /media/santripta/data2/BERT/landscape_data/bert_ner_conll/20260324_135211/ /media/santripta/data2/BERT/knn_complexes_cos/ 85 k c train,val >> knns_bert.log 2>&1
+python scripts/compute_knn_complexes_bert.py /media/santripta/data2/BERT/landscape_data/bert_ner_conll/20260324_135211/ /media/santripta/data2/BERT/knn_complexes_cos/ 87 k c train,val >> knns_bert.log 2>&1
+python scripts/compute_knn_complexes_bert.py /media/santripta/data2/BERT/landscape_data/bert_ner_conll/20260324_135211/ /media/santripta/data2/BERT/knn_complexes_cos/ 90 k c train,val >> knns_bert.log 2>&1
+python scripts/compute_knn_complexes_bert.py /media/santripta/data2/BERT/landscape_data/bert_ner_conll/20260324_135211/ /media/santripta/data2/BERT/knn_complexes_cos/ 92 k c train,val >> knns_bert.log 2>&1
+python scripts/compute_knn_complexes_bert.py /media/santripta/data2/BERT/landscape_data/bert_ner_conll/20260324_135211/ /media/santripta/data2/BERT/knn_complexes_cos/ 95 k c train,val >> knns_bert.log 2>&1
+python scripts/compute_knn_complexes_bert.py /media/santripta/data2/BERT/landscape_data/bert_ner_conll/20260324_135211/ /media/santripta/data2/BERT/knn_complexes_cos/ 97 k c train,val >> knns_bert.log 2>&1

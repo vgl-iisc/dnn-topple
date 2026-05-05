@@ -67,7 +67,7 @@ def _provenance_name(act_file: str) -> str:
     return f'token_coords_{base}.pt'
 
 
-def process_files(worker_id, data_dir, complexes_dir, root, act_files, max_k, method):
+def process_files(worker_id, data_dir, complexes_dir, root, act_files, max_k, method, metric):
     """Worker: load activations, flatten with mask, run k-NN, save graph + provenance."""
     times = {}
     log = get_logger()
@@ -145,7 +145,7 @@ def process_files(worker_id, data_dir, complexes_dir, root, act_files, max_k, me
             effective_k = max_k
 
         start = timer()
-        G = compute_knn_graph(acts_flat, n_neighbors=effective_k)
+        G = compute_knn_graph(acts_flat, n_neighbors=effective_k, metric=metric)
         elapsed = timer() - start
         times[acts_flat.shape].append(elapsed)
 
@@ -163,14 +163,14 @@ def process_files(worker_id, data_dir, complexes_dir, root, act_files, max_k, me
 
 
 def main():
-    if len(sys.argv) < 5:
+    if len(sys.argv) < 6:
         print('Usage: python compute_knn_complexes_bert.py '
-              '<data_dir> <complexes_dir> <max_k> <k|r> [ignore_splits]')
+              '<data_dir> <complexes_dir> <max_k> <k|r> <e|c> [ignore_splits]')
         return
 
     ignore_splits = []
-    if len(sys.argv) >= 6:
-        ignore_splits = sys.argv[5].split(',')
+    if len(sys.argv) >= 7:
+        ignore_splits = sys.argv[6].split(',')
 
     logging.basicConfig(
         level=logging.INFO,
@@ -182,16 +182,18 @@ def main():
     complexes_dir = sys.argv[2]
     max_k         = int(sys.argv[3])
     method        = sys.argv[4]
+    distance      = sys.argv[5]  # 'e' for euclidean, 'c' for cosine
 
     if method != 'k':
         raise NotImplementedError('Only k-NN method is supported (pass k as 4th arg)')
 
     logging.info(f'BERT k-NN: data_dir={data_dir}  complexes_dir={complexes_dir}  '
-                 f'max_k={max_k}  ignore_splits={ignore_splits}')
+                 f'max_k={max_k} metric={distance} ignore_splits={ignore_splits}')
 
     times_dict = {}
 
     for root, dirs, files in os.walk(data_dir):
+
         if 'Tensors' not in root:
             continue
 
@@ -204,14 +206,14 @@ def main():
         # Only activation files (a*.pt), not mask files
         act_files = [f for f in files if _ACT_RE.match(f)]
 
+        logging.info(f'Processing {root}: {len(act_files)} activation files')
         if not act_files:
             continue
 
-        logging.info(f'Processing {root}: {len(act_files)} activation files')
 
         groups = [
             (i, data_dir, complexes_dir, root,
-             act_files[i::CPUS], max_k, method)
+             act_files[i::CPUS], max_k, method, distance)
             for i in range(CPUS)
             if act_files[i::CPUS]
         ]
@@ -227,10 +229,11 @@ def main():
 
         logging.info(f'Done with {root}')
 
-    with open('knn_times_bert.pkl', 'wb') as f:
+    name = f'knn_times_bert_{max_k}_{distance}.pkl'
+    with open(name, 'wb') as f:
         pickle.dump(times_dict, f)
 
-    logging.info('Finished. Timing saved to knn_times_bert.pkl')
+    logging.info(f'Finished. Timing saved to {name}')
 
 
 if __name__ == '__main__':
