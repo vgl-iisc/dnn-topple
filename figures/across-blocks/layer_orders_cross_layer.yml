@@ -63,3 +63,43 @@ resnet:
   a1:
     idx: 4
     name: classifier
+
+resnet50:
+  aconv1:
+    idx: 0
+    name: conv1
+  alayer1:
+    idx: 1
+    name: layer1
+  alayer2:
+    idx: 2
+    name: layer2
+  alayer3:
+    idx: 3
+    name: layer3
+  alayer4:
+    idx: 4
+    name: layer4
+  apenultimate:
+    idx: 5
+    name: classifier
+
+bert:
+  alayer0:
+    idx: 0
+    name: layer0
+  alayer3:
+    idx: 1
+    name: layer3
+  alayer6:
+    idx: 2
+    name: layer6
+  alayer9:
+    idx: 3
+    name: layer9
+  alayer11:
+    idx: 4
+    name: layer11
+  aclassifier:
+    idx: 5
+    name: classifier

@@ -40,6 +40,7 @@ resnet50:
   - apenultimate
 
 bert:
+  - alayer0
   - alayer3
   - alayer6
   - alayer9

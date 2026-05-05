@@ -139,7 +139,8 @@ def render_tree_explorer(id: int):
             st.warning("No features of the selected types.")
             return
 
-        st.write(f"Rendering {len(filtered_features)} features at simplification {simpl}")
+        # st.write(f"Rendering {len(filtered_features)} features at simplification {simpl}")
+        st.write(f"Rendering {len(filtered_features)} features")
         
         plot = arc_explorer_plot(exp, filtered_features, x_type)
         

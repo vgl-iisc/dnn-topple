@@ -12,3 +12,4 @@ scipy==1.16.3
 sympy==1.14.0
 threadpoolctl==3.6.0
 torch==2.9.1
+seaborn==0.13.2
