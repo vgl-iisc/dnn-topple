@@ -1,0 +1,1 @@
+streamlit run vis/app.py D:/BERT/strees_cos_92 D:/BERT/landscape_data/bert_ner_conll . +bert +complexes_dir D:/BERT/knn_complexes_cos_92 +conll_dir ./datasets/conll/data/conll2003
