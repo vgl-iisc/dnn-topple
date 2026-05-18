@@ -5,12 +5,12 @@ Goes through all landscapes in the data directory and computes
 
 import torch
 from knn_graph import compute_knn_graph
-# from rn_graph import compute_rn_graph
+from rn_graph import compute_rn_graph
 
 import os
 import re
 
-from sys import argv
+import argparse
 import numpy as np
 
 import networkx as nx
@@ -20,8 +20,6 @@ from timeit import default_timer as timer
 
 import pickle
 import logging
-
-CPUS = 1
 
 # Matches chunk files produced by run_inference.py: a{tag}_e{epoch}_chunk{n}.pt
 CHUNK_RE = re.compile(r'^(a.+_e\d+)_chunk(\d+)\.pt$')
@@ -55,7 +53,7 @@ def _group_chunks(files):
     logging.info(f"Grouped {len(files)} files into {len(chunk_groups)} chunk groups and {len(non_chunk)} non-chunk files")
     return chunk_groups, non_chunk
 
-def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method):
+def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method, metric="e", cpus_per_worker=1):
         times = {}
         log = get_logger()
 
@@ -114,10 +112,10 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
 
             if method == 'r':
                 start = timer()
-                raise NotImplementedError()
+                Gmax = compute_rn_graph(data, min_neighbours=max_k, metric=metric, complexity=75, graph_degree=60, num_threads=cpus_per_worker, prefix=f"worker_{id}")
             else:
                 start = timer()
-                Gmax = compute_knn_graph(data, n_neighbors=max_k)
+                Gmax = compute_knn_graph(data, n_neighbors=max_k, metric=metric, cpus=cpus_per_worker)
             
             end = timer()
             times[data.shape].append(end - start)
@@ -137,7 +135,7 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
 
             while l < r:
                 mid = l + (r - l) // 2
-                G = compute_knn_graph(data, n_neighbors=mid)
+                G = compute_knn_graph(data, n_neighbors=mid, metric=metric, cpus=cpus_per_worker)
 
                 name = save_name_fn(tensor_file, mid, False)
 
@@ -155,33 +153,47 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
         return times
 
 def main():
-    if len(argv) < 5:
-        print("Usage: python compute_knn_complexes.py <data_dir> <complexes_dir> <max_k> <r|k> (rng vs knn) [ignore_splits] [ignore_tags]")
-        return
-    
-    ignore_splits = []
-    if len(argv) >= 6:
-        ignore_splits = argv[5].split(",")
+    default_cpus = int(cpu_count() * 3/4)
 
-    ignore_tags = []
-    if len(argv) >= 7:
-        ignore_tags = argv[6].split(",")
-    
+    parser = argparse.ArgumentParser(description="Compute (minimally connected) k-NN graphs for all landscapes in a data directory.")
+    parser.add_argument("data_dir", help="Root directory containing landscape tensors")
+    parser.add_argument("complexes_dir", help="Output directory for adjacency lists")
+    parser.add_argument("max_k", type=int, help="Maximum k for k-NN graph construction")
+    parser.add_argument("method", choices=["r", "k"], help="Graph method: 'r' for RNG, 'k' for k-NN")
+    parser.add_argument("--ignore-splits", dest="ignore_splits", default="", metavar="SPLITS",
+                        help="Comma-separated list of split names to skip (use '.' to mean none)")
+    parser.add_argument("--ignore-tags", dest="ignore_tags", default="", metavar="TAGS",
+                        help="Comma-separated list of filename tags to exclude (use '.' to mean none)")
+    parser.add_argument("--cpus", type=int, default=default_cpus,
+                        help=f"Total CPU threads to use (default: {default_cpus})")
+    parser.add_argument("--workers", type=int, default=None,
+                        help="Number of parallel workers (default: same as --cpus)")
+
+    args = parser.parse_args()
+
+    ignore_splits = [s for s in args.ignore_splits.split(",") if s and s != "."]
+    ignore_tags = [t for t in args.ignore_tags.split(",") if t and t != "."]
+
+    cpus = args.cpus
+    workers = args.workers if args.workers is not None else cpus
+    cpus_per_worker = max(1, cpus // workers)
+
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(processName)s - %(levelname)s: %(message)s')
 
     log_to_stderr(logging.INFO)
 
     logging.info(f"Starting k-NN complex computation with ignore_splits={ignore_splits} and ignore_tags={ignore_tags}")
 
-    data_dir = argv[1]
-    complexes_dir = argv[2]
-    max_k = int(argv[3])
-    method = argv[4]
+    data_dir = args.data_dir
+    complexes_dir = args.complexes_dir
+    max_k = args.max_k
+    method = args.method
     
     exact = True
+    metric = "e"
     times_dict = {}
 
-    logging.info(f"Starting k-NN complex computation in {data_dir}, saving to {complexes_dir}, max_k={max_k}, method={method}")
+    logging.info(f"Starting k-NN complex computation in {data_dir}, saving to {complexes_dir}, max_k={max_k}, method={method}, CPUS={cpus}, cpus_per_worker={cpus_per_worker}")
 
     for root, dirs, files in os.walk(data_dir):
         logging.info(f"Processing directory: {root}")
@@ -200,7 +212,7 @@ def main():
             continue
 
         tensor_files = [f for f in files if f.startswith("vectors_") and f.endswith(".txt")]
-        tensor_files_2 = [f for f in files if f.endswith(".pt") and ignore_tags[0] not in f]
+        tensor_files_2 = [f for f in files if f.endswith(".pt") and all(tag not in f for tag in ignore_tags)]
 
         if len(tensor_files_2) > 0:
             tensor_files = tensor_files_2
@@ -212,9 +224,9 @@ def main():
 
         groups = []
 
-        N_groups = max(1, CPUS)
+        N_groups = max(1, workers)
         for i in range(N_groups):
-            groups.append((i, data_dir, complexes_dir, root, tensor_files[i::N_groups], max_k, True, method))
+            groups.append((i, data_dir, complexes_dir, root, tensor_files[i::N_groups], max_k, exact, method, metric, cpus_per_worker))
 
         logging.info(f"Starting {root}: {len(tensor_files)} files, {len(groups)} groups: {list(map(lambda x: len(x[4]), groups))}")
 

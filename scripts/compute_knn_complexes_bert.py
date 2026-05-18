@@ -31,11 +31,11 @@ Usage:
   ignore_splits   optional comma-separated split names to skip (e.g. train,val)
 """
 
+import argparse
 import logging
 import os
 import pickle
 import re
-import sys
 from multiprocessing import Pool, cpu_count, log_to_stderr, get_logger
 from timeit import default_timer as timer
 
@@ -44,8 +44,6 @@ import numpy as np
 import torch
 
 from knn_graph import compute_knn_graph
-
-CPUS = 15
 
 # Regex that matches activation files saved by run_train_inference.py:
 #   alayer11_e0.pt, aclassifier_e3.pt, etc.
@@ -67,7 +65,7 @@ def _provenance_name(act_file: str) -> str:
     return f'token_coords_{base}.pt'
 
 
-def process_files(worker_id, data_dir, complexes_dir, root, act_files, max_k, method, metric):
+def process_files(worker_id, data_dir, complexes_dir, root, act_files, max_k, method, metric, cpus_per_worker=1):
     """Worker: load activations, flatten with mask, run k-NN, save graph + provenance."""
     times = {}
     log = get_logger()
@@ -145,7 +143,7 @@ def process_files(worker_id, data_dir, complexes_dir, root, act_files, max_k, me
             effective_k = max_k
 
         start = timer()
-        G = compute_knn_graph(acts_flat, n_neighbors=effective_k, metric=metric)
+        G = compute_knn_graph(acts_flat, n_neighbors=effective_k, metric=metric, cpus=cpus_per_worker)
         elapsed = timer() - start
         times[acts_flat.shape].append(elapsed)
 
@@ -163,14 +161,35 @@ def process_files(worker_id, data_dir, complexes_dir, root, act_files, max_k, me
 
 
 def main():
-    if len(sys.argv) < 6:
-        print('Usage: python compute_knn_complexes_bert.py '
-              '<data_dir> <complexes_dir> <max_k> <k|r> <e|c> [ignore_splits]')
-        return
+    default_cpus = int(cpu_count() * 3/4)
 
-    ignore_splits = []
-    if len(sys.argv) >= 7:
-        ignore_splits = sys.argv[6].split(',')
+    parser = argparse.ArgumentParser(
+        description='Compute k-NN graphs for BERT NER activation tensors.'
+    )
+    parser.add_argument('data_dir', help='Root directory of inference output')
+    parser.add_argument('complexes_dir', help='Output directory for adjacency lists')
+    parser.add_argument('max_k', type=int, help='Maximum number of neighbours')
+    parser.add_argument('method', choices=['r', 'k'],
+                        help="Graph method: 'k' for k-NN (only 'k' currently supported)")
+    parser.add_argument('--metric', default='e', choices=['e', 'c'],
+                        help="Distance metric: 'e' euclidean, 'c' cosine (default: e)")
+    parser.add_argument('--ignore-splits', dest='ignore_splits', default='', metavar='SPLITS',
+                        help='Comma-separated list of split names to skip (use \'.\'  to mean none)')
+    parser.add_argument('--ignore-tags', dest='ignore_tags', default='', metavar='TAGS',
+                        help='Comma-separated list of filename tags to exclude (use \'.\'  to mean none)')
+    parser.add_argument('--cpus', type=int, default=default_cpus,
+                        help=f'Total CPU threads to use (default: {default_cpus})')
+    parser.add_argument('--workers', type=int, default=None,
+                        help='Number of parallel workers (default: same as --cpus)')
+
+    args = parser.parse_args()
+
+    ignore_splits = [s for s in args.ignore_splits.split(',') if s and s != '.']
+    ignore_tags   = [t for t in args.ignore_tags.split(',')   if t and t != '.']
+
+    cpus = args.cpus
+    workers = args.workers if args.workers is not None else cpus
+    cpus_per_worker = max(1, cpus // workers)
 
     logging.basicConfig(
         level=logging.INFO,
@@ -178,17 +197,18 @@ def main():
     )
     log_to_stderr(logging.INFO)
 
-    data_dir      = sys.argv[1]
-    complexes_dir = sys.argv[2]
-    max_k         = int(sys.argv[3])
-    method        = sys.argv[4]
-    distance      = sys.argv[5]  # 'e' for euclidean, 'c' for cosine
+    data_dir      = args.data_dir
+    complexes_dir = args.complexes_dir
+    max_k         = args.max_k
+    method        = args.method
+    metric        = args.metric
 
     if method != 'k':
-        raise NotImplementedError('Only k-NN method is supported (pass k as 4th arg)')
+        raise NotImplementedError("Only k-NN method is supported (pass 'k' as method)")
 
     logging.info(f'BERT k-NN: data_dir={data_dir}  complexes_dir={complexes_dir}  '
-                 f'max_k={max_k} metric={distance} ignore_splits={ignore_splits}')
+                 f'max_k={max_k} metric={metric} ignore_splits={ignore_splits} '
+                 f'ignore_tags={ignore_tags} cpus={cpus} workers={workers}')
 
     times_dict = {}
 
@@ -197,25 +217,24 @@ def main():
         if 'Tensors' not in root:
             continue
 
-        # Apply split filter
         root_parts = root.replace('\\', '/').split('/')
         if any(s in root_parts for s in ignore_splits):
             logging.info(f'Skipping {root} (ignore_splits)')
             continue
 
-        # Only activation files (a*.pt), not mask files
-        act_files = [f for f in files if _ACT_RE.match(f)]
+        # Only activation files (a*.pt), not mask files; filter by --ignore-tags
+        act_files = [f for f in files if _ACT_RE.match(f) and all(tag not in f for tag in ignore_tags)]
 
         logging.info(f'Processing {root}: {len(act_files)} activation files')
         if not act_files:
             continue
 
-
+        N_groups = max(1, workers)
         groups = [
             (i, data_dir, complexes_dir, root,
-             act_files[i::CPUS], max_k, method, distance)
-            for i in range(CPUS)
-            if act_files[i::CPUS]
+             act_files[i::N_groups], max_k, method, metric, cpus_per_worker)
+            for i in range(N_groups)
+            if act_files[i::N_groups]
         ]
 
         pool = Pool(len(groups))
@@ -229,7 +248,7 @@ def main():
 
         logging.info(f'Done with {root}')
 
-    name = f'knn_times_bert_{max_k}_{distance}.pkl'
+    name = f'knn_times_bert_{max_k}_{metric}.pkl'
     with open(name, 'wb') as f:
         pickle.dump(times_dict, f)
 

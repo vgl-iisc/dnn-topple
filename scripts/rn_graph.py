@@ -9,7 +9,11 @@ Saves the graph in networkx adjacency list format to the specified output file.
 You probably don't want to run this directly, but rather use the wrapper script compute_knn_complexes.py
 """
 
-import diskannpy as dap
+try:
+    import diskannpy as dap
+except ImportError:
+    dap = None
+
 import networkx as nx
 import numpy as np
 import torch
@@ -53,13 +57,17 @@ def load_packed_vamana(file_path):
 
 RNG_BASEDIR = "tmp_rng/"
 
-def compute_rn_graph(data: np.ndarray, complexity: int = 75, graph_degree: int = 60, num_threads: int = 1, prefix: str = "tmp") -> nx.Graph:
+def compute_rn_graph(data: np.ndarray, min_neighbours=20, metric = 'e', complexity: int = 75, graph_degree: int = 60, num_threads: int = 1, prefix: str = "tmp") -> nx.Graph:
     """
     Computes the approx rngraph (vamana index) for the given data.
 
     Parameters:
     - data: np.ndarray, shape (n_samples, n_features)
         The input data points.
+    - min_neighbours: int
+        The minimum number of neighbors to use for each sample in the Vamana index. This is a lower bound on the number of neighbors each node will have in the resulting graph.
+    - metric: str
+        The distance metric to use. Options are 'e' for euclidean or 'c' for cosine.
     - complexity: int
         The complexity parameter for the Vamana index. Higher values lead to better recall but slower query times.
     - graph_degree: int
@@ -70,15 +78,23 @@ def compute_rn_graph(data: np.ndarray, complexity: int = 75, graph_degree: int =
         A prefix for temporary files created during index building. This is useful to avoid conflicts when running multiple instances in parallel.
     """
 
+    if dap is None:
+        raise ImportError(
+            "diskannpy is required for RNG computation but is not installed. "
+            "Install it with: pip install diskannpy"
+        )
+
     work_dir = os.path.join(RNG_BASEDIR, prefix)
 
     shutil.rmtree(work_dir, ignore_errors=True)
     os.makedirs(work_dir, exist_ok=True)
 
+    metric = 'l2' if metric == 'e' else 'cosine'
+
     dap.build_memory_index(
         data,
         index_prefix=prefix,
-        distance_metric="l2",
+        distance_metric=metric,
         index_directory=work_dir,
         complexity=complexity,
         graph_degree=graph_degree,
