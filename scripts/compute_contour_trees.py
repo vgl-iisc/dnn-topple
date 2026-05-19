@@ -2,7 +2,7 @@
 Computes contour trees for all landscapes available
 
 Usage:
-python compute_contour_trees.py <data_dir> <complexes_dir> <ct_dir>
+python compute_contour_trees.py <data_dir> <complexes_dir> <ct_dir> s|c|j
 """
 
 import networkx as nx

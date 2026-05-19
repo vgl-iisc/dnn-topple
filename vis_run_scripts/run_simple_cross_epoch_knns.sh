@@ -1,0 +1,1 @@
+streamlit run vis/app.py /d/strees_cross_epoch/ /d/CrossEpochLatents/ datasets/

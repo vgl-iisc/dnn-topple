@@ -57,14 +57,43 @@ def load_packed_vamana(file_path):
 
 RNG_BASEDIR = "tmp_rng/"
 
-def compute_rn_graph(data: np.ndarray, min_neighbours=20, metric = 'e', complexity: int = 75, graph_degree: int = 60, num_threads: int = 1, prefix: str = "tmp") -> nx.Graph:
+
+def repair_low_degree(data: np.ndarray, work_dir: str, prefix: str, graph: nx.Graph, min_degree: int, num_threads: int = 1) -> None:
+    """
+    For every node whose graph degree is below min_degree, query the Vamana
+    index for additional nearest neighbors and splice the missing edges in-place.
+    """
+
+    low_degree = [n for n, d in graph.degree() if d < min_degree]
+    if not low_degree:
+        return
+
+    print(f"repair_low_degree: {len(low_degree)} nodes below min_degree={min_degree} out of {len(graph)} total nodes")
+
+    idx = dap.StaticMemoryIndex(
+        index_directory=work_dir,
+        num_threads=num_threads,
+        initial_search_complexity=64,
+        index_prefix=prefix,
+    )
+
+    for i in low_degree:
+        neighbors, _ = idx.search(data[i].astype(np.float32), k_neighbors=min_degree + 1, complexity=64)
+        # neighbors[0] is the query point itself; skip it
+        for j in neighbors:
+            j = int(j)
+            if j != i and not graph.has_edge(i, j):
+                graph.add_edge(i, j)
+
+
+def compute_rn_graph(data: np.ndarray, min_neighbours=None, metric = 'e', complexity: int = 75, graph_degree: int = 60, num_threads: int = 1, prefix: str = "tmp") -> nx.Graph:
     """
     Computes the approx rngraph (vamana index) for the given data.
 
     Parameters:
     - data: np.ndarray, shape (n_samples, n_features)
         The input data points.
-    - min_neighbours: int
+    - min_neighbours: int | None
         The minimum number of neighbors to use for each sample in the Vamana index. This is a lower bound on the number of neighbors each node will have in the resulting graph.
     - metric: str
         The distance metric to use. Options are 'e' for euclidean or 'c' for cosine.
@@ -103,8 +132,12 @@ def compute_rn_graph(data: np.ndarray, min_neighbours=20, metric = 'e', complexi
 
     packed_graph_path = os.path.join(work_dir, prefix)
     adj = load_packed_vamana(packed_graph_path)
+    graph = nx.from_scipy_sparse_array(adj)
+
+    if min_neighbours is not None:
+        repair_low_degree(data, work_dir, prefix, graph, min_neighbours, num_threads)
     
-    return nx.from_scipy_sparse_array(adj)
+    return graph
 
 
 def main():
