@@ -140,6 +140,63 @@ def compute_rn_graph(data: np.ndarray, min_neighbours=None, metric = 'e', comple
     return graph
 
 
+def compute_ann_graph(data: np.ndarray, n_neighbors: int = 5, metric: str = 'e', complexity: int = 75, graph_degree: int = 60, num_threads: int = 1, prefix: str = "tmp") -> nx.Graph:
+    """
+    Computes an approximate k-NN graph using the DiskANN/Vamana index backend.
+    Builds the index once, then batch-queries every point for its k nearest
+    neighbors.  Edges are added undirected (union of both directions).
+
+    Parameters mirror compute_rn_graph; n_neighbors replaces min_neighbours.
+    """
+    if dap is None:
+        raise ImportError(
+            "diskannpy is required for ANN computation but is not installed. "
+            "Install it with: pip install diskannpy"
+        )
+
+    work_dir = os.path.join(RNG_BASEDIR, prefix)
+    shutil.rmtree(work_dir, ignore_errors=True)
+    os.makedirs(work_dir, exist_ok=True)
+
+    dap_metric = 'l2' if metric == 'e' else 'cosine'
+
+    dap.build_memory_index(
+        data,
+        index_prefix=prefix,
+        distance_metric=dap_metric,
+        index_directory=work_dir,
+        complexity=complexity,
+        graph_degree=graph_degree,
+        num_threads=num_threads,
+    )  # type: ignore
+
+    idx = dap.StaticMemoryIndex(
+        index_directory=work_dir,
+        num_threads=num_threads,
+        initial_search_complexity=complexity,
+        index_prefix=prefix,
+    )
+
+    # k+1 because the query point itself is included in the results
+    ids, _ = idx.batch_search(
+        data.astype(np.float32),
+        k_neighbors=n_neighbors + 1,
+        complexity=complexity,
+        num_threads=num_threads,
+    )
+
+    n = len(data)
+    G = nx.Graph()
+    G.add_nodes_from(range(n))
+    for i, neighbors in enumerate(ids):
+        for j in neighbors:
+            j = int(j)
+            if j != i:
+                G.add_edge(i, j)
+
+    return G
+
+
 def main():
     if len(argv) != 3:
         print("Usage: python rn_graph.py <tensors_file.pt> <output_file>")

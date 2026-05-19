@@ -23,7 +23,7 @@ Output (--transformer):
 
 import torch
 from knn_graph import compute_knn_graph
-from rn_graph import compute_rn_graph
+from rn_graph import compute_rn_graph, compute_ann_graph
 
 import os
 import re
@@ -159,6 +159,9 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
                 min_k_rng = max_k if fill_rng else None
                 start = timer()
                 Gmax = compute_rn_graph(data, min_neighbours=min_k_rng, metric=metric, complexity=75, graph_degree=60, num_threads=cpus_per_worker, prefix=f"worker_{id}")
+            elif method == 'ann':
+                start = timer()
+                Gmax = compute_ann_graph(data, n_neighbors=max_k, metric=metric, complexity=75, graph_degree=60, num_threads=cpus_per_worker, prefix=f"worker_{id}")
             else:
                 start = timer()
                 Gmax = compute_knn_graph(data, n_neighbors=max_k, metric=metric, cpus=cpus_per_worker)
@@ -266,6 +269,13 @@ def process_files_transformer(worker_id, data_dir, complexes_dir, root, act_file
                                  num_threads=cpus_per_worker, prefix=f'worker_{worker_id}')
             elapsed = timer() - start
             effective_k = max_k
+        elif method == 'ann':
+            start = timer()
+            G = compute_ann_graph(acts_flat, n_neighbors=max_k, metric=metric,
+                                  complexity=75, graph_degree=60,
+                                  num_threads=cpus_per_worker, prefix=f'worker_{worker_id}')
+            elapsed = timer() - start
+            effective_k = max_k
         else:
             effective_k = max_k
             if N_valid <= max_k:
@@ -307,7 +317,7 @@ def main():
     parser.add_argument("data_dir", help="Root directory containing landscape tensors")
     parser.add_argument("complexes_dir", help="Output directory for adjacency lists")
     parser.add_argument("max_k", type=int, help="Maximum k for k-NN graph construction")
-    parser.add_argument("method", choices=["r", "k"], help="Graph method: 'r' for RNG, 'k' for k-NN")
+    parser.add_argument("method", choices=["r", "k", "ann"], help="Graph method: 'r' for RNG, 'k' for k-NN, 'ann' for approximate k-NN via DiskANN")
     parser.add_argument("--transformer", action="store_true",
                         help="Use the transformer/BERT path: expects 3D activation tensors with paired mask files")
     parser.add_argument("--metric", default="e", choices=["e", "c"],
@@ -415,10 +425,12 @@ def main():
         logging.info(f"Done with {root}")
 
     if args.transformer:
-        prefix = "rn" if method == 'r' else "knn"
+        prefix = "rn" if method == 'r' else ("ann" if method == 'ann' else "knn")
         name = f"{prefix}_times_transformer_{max_k}_{metric}.pkl"
     elif method == 'r':
         name = "rn_times.pkl"
+    elif method == 'ann':
+        name = "ann_times.pkl"
     else:
         name = "knn_times.pkl"
 
