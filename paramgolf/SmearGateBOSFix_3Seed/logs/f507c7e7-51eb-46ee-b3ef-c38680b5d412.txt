@@ -1,0 +1,47 @@
+2500/20000 train_loss: 2.5886 train_time: 8.9m tok/s: 3667182
+3000/20000 train_loss: 2.7957 train_time: 10.7m tok/s: 3665500
+3500/20000 train_loss: 2.6189 train_time: 12.5m tok/s: 3663916
+4000/20000 train_loss: 2.5657 train_time: 14.3m tok/s: 3662818
+4000/20000 val_loss: 2.5582 val_bpb: 1.1906
+4500/20000 train_loss: 2.5267 train_time: 16.1m tok/s: 3662499
+5000/20000 train_loss: 2.5195 train_time: 17.9m tok/s: 3661965
+5500/20000 train_loss: 2.5045 train_time: 19.7m tok/s: 3661811
+layer_loop:enabled step:5854 frac:0.350 encoder:[0, 1, 2, 3, 4, 5, 3, 4] decoder:[5, 3, 4, 5, 6, 7, 8, 9, 10]
+6000/20000 train_loss: 2.5665 train_time: 21.7m tok/s: 3617566
+6500/20000 train_loss: 2.5149 train_time: 24.4m tok/s: 3487724
+7000/20000 train_loss: 2.5125 train_time: 27.1m tok/s: 3383918
+7500/20000 train_loss: 2.5084 train_time: 29.8m tok/s: 3298793
+8000/20000 train_loss: 2.5054 train_time: 32.5m tok/s: 3227884
+8000/20000 val_loss: 2.4546 val_bpb: 1.1423
+8500/20000 train_loss: 2.5223 train_time: 35.2m tok/s: 3168232
+9000/20000 train_loss: 2.3474 train_time: 37.8m tok/s: 3116858
+9500/20000 train_loss: 2.4534 train_time: 40.5m tok/s: 3072195
+10000/20000 train_loss: 2.3911 train_time: 43.2m tok/s: 3033025
+10500/20000 train_loss: 2.4933 train_time: 45.9m tok/s: 2998516
+11000/20000 train_loss: 2.4393 train_time: 48.6m tok/s: 2967767
+11500/20000 train_loss: 2.3333 train_time: 51.3m tok/s: 2940141
+12000/20000 train_loss: 2.2996 train_time: 54.0m tok/s: 2915019
+12000/20000 val_loss: 2.3116 val_bpb: 1.0758
+12500/20000 train_loss: 2.3998 train_time: 56.7m tok/s: 2891730
+13000/20000 train_loss: 2.3404 train_time: 59.4m tok/s: 2870146
+13093/20000 val_loss: 2.2916 val_bpb: 1.0665
+stopping_early: wallclock_cap train_time: 3592356ms step: 13093/20000
+peak memory allocated: 42078 MiB reserved: 47286 MiB
+ema:applying EMA weights
+Serialized model: 135417533 bytes
+Code size (uncompressed): 152651 bytes
+Code size (compressed): 31385 bytes
+GPTQ:collecting Hessians from calibration data...
+GPTQ:collected 67 Hessians in 4.1s
+Quantized weights:
+  gptq (int6): blocks.attn.c_k.weight, blocks.attn.c_q.weight, blocks.attn.c_v.weight, blocks.attn.proj.weight, blocks.mlp.fc.weight, blocks.mlp.proj.weight
+  gptq (int6)+lqer_asym: blocks.mlp.fc.weight
+  gptq (int7)+lqer_asym: tok_emb.weight
+  passthrough (float16): blocks.attn.attn_gate_w, blocks.attn.q_gain, blocks.attn_scale, blocks.mlp_scale, blocks.resid_mix, parallel_post_lambdas, parallel_resid_lambdas, skip_gates, skip_weights, smear_gate.weight, smear_lambda
+GPTQ:quantized in 13.3s
+GPTQ:compressed+saved in 65.7s
+Serialized model quantized+brotli: 15901668 bytes
+Total submission size quantized+brotli: 15933053 bytes
+serialize_wallclock: 84.737s
+artifact_production_wallclock: 3782.099s (must be < 3600.0)
+diagnostic pre-quantization post-ema val_loss:2.25045498 val_bpb:1.04732118 eval_time:3780ms

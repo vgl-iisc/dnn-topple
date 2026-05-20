@@ -1,0 +1,110 @@
+# GPT inference config — SmearGateBOSFix_3Seed
+#
+# Run:
+#   cd training-inference/paramgolf
+#   python run_inference.py --config runs/smeargate_bos.yaml -o logs/run.log
+#
+# Data paths are resolved via Hyperparameters, which reads environment variables.
+# Override them here in model_env:  each key is set as an env var before
+# Hyperparameters() is constructed, identical to how the training script is invoked.
+#
+# State dict formats:
+#   .pt / .pth   standard torch.save (raw state dict OR checkpoint wrapper dict)
+#   .npz         numpy.savez(**state_dict) — keys must match model param names
+#   .npy / .np   numpy.save(path, state_dict_as_dict, allow_pickle=True)
+
+# ------------------------------------------------------------
+# Which train_gpt.py to import.  Defaults to
+# ../../paramgolf/SmearGateBOSFix_3Seed relative to this script.
+# ------------------------------------------------------------
+# train_gpt_dir: /absolute/path/to/paramgolf/SmearGateBOSFix_3Seed
+
+# ------------------------------------------------------------
+# Frozen model weights
+# ------------------------------------------------------------
+state_dict: /data1/home/santriptas/losslandtopo/paramgolf/SmearGateBOSFix_3Seed/final_model_1800.pt   # or .npz / .npy
+
+# ------------------------------------------------------------
+# Model architecture — forwarded as env vars to Hyperparameters.
+# Values here mirror the SmearGateBOSFix_3Seed defaults.
+# Only set keys that differ from Hyperparameters class defaults.
+# ------------------------------------------------------------
+model_env:
+  VOCAB_SIZE:      "8192"
+  NUM_LAYERS:      "11"
+  MODEL_DIM:       "512"
+  NUM_HEADS:       "8"
+  NUM_KV_HEADS:    "4"
+  MLP_MULT:        "4.0"
+  LOGIT_SOFTCAP:   "30.0"
+  SMEAR_GATE_ENABLED: "1"  # matches SmearGateBOSFix_3Seed
+  SKIP_GATES_ENABLED: "1"
+  PARALLEL_START_LAYER: "8"
+  NUM_LOOPS:       "2"
+  LOOP_START:      "3"
+  LOOP_END:        "5"
+  XSA_LAST_N:      "11"
+  ROPE_DIMS:       "16"
+  DATA_PATH:       "/data1/home/santriptas/losslandtopo/paramgolf/SmearGateBOSFix_3Seed/data/datasets/fineweb10B_sp8192_caseops/datasets/datasets/fineweb10B_sp8192_lossless_caps_caseops_v1_reserved"
+  TOKENIZER_PATH:  "/data1/home/santriptas/losslandtopo/paramgolf/SmearGateBOSFix_3Seed/tokenizers/fineweb_8192_bpe_lossless_caps_caseops_v1_reserved.model"
+
+# ------------------------------------------------------------
+# Inference settings
+# ------------------------------------------------------------
+infer:
+  # Directory under which a timestamped sub-folder is created per run.
+  output_dir: /data1/home/santriptas/inference_outputs/SmearGateBOSFix_3Seed_1800/
+
+  # Number of tokens per sequence (should match training eval_seq_len).
+  seq_len: 2048
+
+  # Sequences per forward-pass batch.  Lower if VRAM is tight.
+  batch_seqs: 128
+
+  # How many sequences to sample per split.  null = process the full split.
+  # Sequences are randomly selected BEFORE inference so only this many are
+  # forwarded through the model (efficient for large train splits).
+  # Recommended: 5000–50000 for activation collection; null for losses only.
+  ds_subsample: 10000
+
+  # Hook targets — paths follow PyTorch module dot-notation with bracket indexing.
+  # i[0] is captured at each hook point (first positional input to the module).
+  #
+  # Which hook targets fire and what they capture (shape: (B, seq_len, D)):
+  #
+  #   blocks[N]       N < parallel_start_layer (default 8):
+  #                     pre-norm residual stream x entering block N.
+  #                   N >= parallel_start_layer:
+  #                     HOOK NEVER FIRES — _parallel_block() bypasses Block.forward().
+  #                     Use blocks[N].attn or blocks[N].mlp instead.
+  #   blocks[N].attn  ALL N: post-attn-norm input; fires for both regular and parallel blocks.
+  #   blocks[N].mlp   ALL N: post-mlp-norm input;  fires for both regular and parallel blocks.
+  #   final_norm      ALWAYS: merged hidden state after all blocks, before LM projection.
+  #
+  # For this config (num_layers=11, parallel_start_layer=8):
+  #   Encoder blocks (called via Block.forward): 0, 1, 2, 3, 4
+  #   Non-parallel decoder blocks:               5, 6, 7
+  #   Parallel decoder blocks (bypass Block.forward): 8, 9, 10
+  collect:
+    - path: blocks[0]
+      tag:  block0
+    # - path: blocks[2]
+    #   tag:  block2
+    - path: blocks[5]
+      tag:  block5
+    # - path: blocks[7]
+    #   tag:  block7
+    # blocks 8-10 are in the parallel zone — must use .attn (or .mlp) suffix
+    # - path: blocks[8].attn
+    #   tag:  block8_attn
+    - path: blocks[10].attn
+      tag:  block10_attn
+    - path: final_norm
+      tag:  final_norm
+
+# ------------------------------------------------------------
+# Misc
+# ------------------------------------------------------------
+seed:   42       # RNG seed for random subsampling
+device: cuda:0
+name:   smeargate_bos_inference_1800

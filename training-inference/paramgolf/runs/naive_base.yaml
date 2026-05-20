@@ -1,0 +1,43 @@
+# Inference config for paramgolf/naive_base
+# Run:
+#   python run_inference_naive.py --config runs/naive_base.yaml -o logs/naive_base.log
+
+name: naive_base_inference
+device: cuda:0
+seed: 42
+
+# Path to the frozen state dict (.pt, .npz, .npy, or .np).
+state_dict: /path/to/naive_base_checkpoint.pt
+
+# Optional: override any Hyperparameters env vars.
+# The defaults (vocab_size=1024, num_layers=9, model_dim=512, train_seq_len=1024)
+# match the naive baseline out of the box; only override if your checkpoint differs.
+model_env:
+  DATA_PATH: ./data/datasets/fineweb10B_sp1024
+  TOKENIZER_PATH: ./data/tokenizers/fineweb_1024_bpe.model
+  # VOCAB_SIZE: 1024
+  # NUM_LAYERS: 9
+  # MODEL_DIM: 512
+
+infer:
+  output_dir: /path/to/output
+  seq_len: 1024        # matches naive_base train_seq_len
+  batch_seqs: 32
+  ds_subsample: 10000  # set to null to process all sequences
+
+  # Activation hooks.  All blocks[N] fire correctly (no parallel blocks).
+  # i[0] captures the pre-norm residual stream x entering each block.
+  # final_norm i[0] is the hidden state after all blocks, before the LM head.
+  collect:
+    - path: blocks[0]
+      tag: block0
+    - path: blocks[2]
+      tag: block2
+    - path: blocks[4]
+      tag: block4
+    - path: blocks[6]
+      tag: block6
+    - path: blocks[8]
+      tag: block8
+    - path: final_norm
+      tag: final_norm

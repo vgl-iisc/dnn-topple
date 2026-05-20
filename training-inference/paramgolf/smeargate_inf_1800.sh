@@ -1,0 +1,1 @@
+python training-inference/paramgolf/run_inference_smeargate_bos.py -c training-inference/paramgolf/runs/smeargate_bos_1800.yaml -o smeargate_bos_1800.log
