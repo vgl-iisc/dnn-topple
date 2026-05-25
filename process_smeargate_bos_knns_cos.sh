@@ -1,1 +1,1 @@
-python scripts/compute_knn_complexes_bert.py /data1/home/santriptas/inference_outputs/SmearGateBOSFix_3Seed_1800/smeargate_bos_inference_1800/ /data1/home/santriptas/inference_outputs/knns_smeargate_1800_92/ 92 k c > knns_smeargate_1800.log 2>&1
+python scripts/compute_knn_complexes.py /data1/home/santriptas/inference_outputs/SmearGateBOSFix_3Seed_1800/smeargate_bos_inference_1800/ /data1/home/santriptas/inference_outputs/knns_smeargate_1800_92/ 92 k --transformer --metric c > knns_smeargate_1800.log 2>&1
