@@ -23,7 +23,7 @@ Output (--transformer):
 
 import torch
 from knn_graph import compute_knn_graph
-from rn_graph import compute_rn_graph, compute_ann_graph
+from rn_graph import compute_rn_graph, compute_ann_graph, compute_ann_disk_graph
 
 import os
 import re
@@ -98,7 +98,7 @@ def _provenance_name(act_file: str) -> str:
 # Worker: standard path
 # ---------------------------------------------------------------------------
 
-def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method, metric="e", cpus_per_worker=1, fill_rng=False):
+def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method, metric="e", cpus_per_worker=1, fill_rng=False, disk=False, max_mem=None):
         times = {}
         log = get_logger()
 
@@ -161,7 +161,11 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
                 Gmax = compute_rn_graph(data, min_neighbours=min_k_rng, metric=metric, complexity=75, graph_degree=60, num_threads=cpus_per_worker, prefix=f"worker_{id}")
             elif method == 'ann':
                 start = timer()
-                Gmax = compute_ann_graph(data, n_neighbors=max_k, metric=metric, complexity=75, graph_degree=60, num_threads=cpus_per_worker, prefix=f"worker_{id}")
+                if disk:
+                    assert max_mem is not None
+                    Gmax = compute_ann_disk_graph(data, n_neighbors=max_k, metric=metric, complexity=75, graph_degree=60, num_threads=cpus_per_worker, prefix=f"worker_{id}", max_mem=max_mem)
+                else:
+                    Gmax = compute_ann_graph(data, n_neighbors=max_k, metric=metric, complexity=75, graph_degree=60, num_threads=cpus_per_worker, prefix=f"worker_{id}")
             else:
                 start = timer()
                 Gmax = compute_knn_graph(data, n_neighbors=max_k, metric=metric, cpus=cpus_per_worker)
@@ -206,7 +210,7 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
 # Worker: transformer path
 # ---------------------------------------------------------------------------
 
-def process_files_transformer(worker_id, data_dir, complexes_dir, root, act_files, max_k, method, metric, cpus_per_worker=1, fill_rng=False):
+def process_files_transformer(worker_id, data_dir, complexes_dir, root, act_files, max_k, method, metric, cpus_per_worker=1, fill_rng=False, disk=False, max_mem=None):
     """Worker: load activations, flatten with mask, run k-NN, save graph + provenance."""
     times = {}
     log = get_logger()
@@ -271,9 +275,16 @@ def process_files_transformer(worker_id, data_dir, complexes_dir, root, act_file
             effective_k = max_k
         elif method == 'ann':
             start = timer()
-            G = compute_ann_graph(acts_flat, n_neighbors=max_k, metric=metric,
-                                  complexity=75, graph_degree=60,
-                                  num_threads=cpus_per_worker, prefix=f'worker_{worker_id}')
+            if disk:
+                assert max_mem is not None
+                G = compute_ann_disk_graph(acts_flat, n_neighbors=max_k, metric=metric,
+                                          complexity=75, graph_degree=60,
+                                          num_threads=cpus_per_worker, prefix=f'worker_{worker_id}',
+                                          max_mem=max_mem)
+            else:
+                G = compute_ann_graph(acts_flat, n_neighbors=max_k, metric=metric,
+                                      complexity=75, graph_degree=60,
+                                      num_threads=cpus_per_worker, prefix=f'worker_{worker_id}')
             elapsed = timer() - start
             effective_k = max_k
         else:
@@ -332,8 +343,18 @@ def main():
                         help="Number of parallel workers (default: same as --cpus)")
     parser.add_argument("--fill_rng", action="store_true", default=False, 
                         help="Fill in the RN graph to ensure minimum degree of max_k")
+    parser.add_argument("--disk", action="store_true", default=False,
+                        help="Use DiskANN disk indices instead of memory indices (only valid with method 'ann')")
+    parser.add_argument("--max_mem", type=float, default=None, metavar="GB",
+                        help="Memory budget in GB for DiskANN disk index build and search (required with --disk)")
 
     args = parser.parse_args()
+
+    if args.disk:
+        if args.method != 'ann':
+            parser.error("--disk can only be used with method 'ann'")
+        if args.max_mem is None:
+            parser.error("--disk requires --max_mem <GB>")
 
     ignore_splits = [s for s in args.ignore_splits.split(",") if s and s != "."]
     ignore_tags   = [t for t in args.ignore_tags.split(",")   if t and t != "."]
@@ -351,12 +372,14 @@ def main():
     method        = args.method
     metric        = args.metric
     fill_rng      = args.fill_rng
+    disk          = args.disk
+    max_mem       = args.max_mem
     mode = "transformer" if args.transformer else "standard"
     logging.info(
         f"Starting k-NN complex computation: mode={mode} data_dir={data_dir} "
         f"complexes_dir={complexes_dir} max_k={max_k} method={method} metric={metric} "
         f"ignore_splits={ignore_splits} ignore_tags={ignore_tags} "
-        f"cpus={cpus} workers={workers}"
+        f"cpus={cpus} workers={workers} disk={disk} max_mem={max_mem}"
     )
 
     exact = True
@@ -385,7 +408,7 @@ def main():
 
             groups = [
                 (i, data_dir, complexes_dir, root,
-                 act_files[i::N_groups], max_k, method, metric, cpus_per_worker, fill_rng)
+                 act_files[i::N_groups], max_k, method, metric, cpus_per_worker, fill_rng, disk, max_mem)
                 for i in range(N_groups)
                 if act_files[i::N_groups]
             ]
@@ -404,7 +427,7 @@ def main():
 
             groups = [
                 (i, data_dir, complexes_dir, root,
-                 tensor_files[i::N_groups], max_k, exact, method, metric, cpus_per_worker, fill_rng)
+                 tensor_files[i::N_groups], max_k, exact, method, metric, cpus_per_worker, fill_rng, disk, max_mem)
                 for i in range(N_groups)
             ]
             worker_fn = process_files

@@ -197,6 +197,71 @@ def compute_ann_graph(data: np.ndarray, n_neighbors: int = 5, metric: str = 'e',
     return G
 
 
+def compute_ann_disk_graph(data: np.ndarray, n_neighbors: int = 5, metric: str = 'e', complexity: int = 75, graph_degree: int = 60, num_threads: int = 1, prefix: str = "tmp", max_mem: float = 4.0) -> nx.Graph:
+    """
+    Computes an approximate k-NN graph using the DiskANN disk index backend.
+    Suitable for very large datasets that do not fit in memory.
+    Both build and search memory budgets are set to max_mem GB.
+
+    Note: DiskANN disk indices do not support cosine metric; only 'e' (l2) is supported.
+
+    Parameters mirror compute_ann_graph, with the addition of:
+    - max_mem: float
+        Maximum memory budget in GB for both building and searching the disk index.
+    """
+    if dap is None:
+        raise ImportError(
+            "diskannpy is required for ANN disk computation but is not installed. "
+            "Install it with: pip install diskannpy"
+        )
+    if metric != 'e':
+        raise ValueError(
+            "DiskANN disk indices do not support cosine metric. Only 'e' (l2) is supported."
+        )
+
+    work_dir = os.path.join(RNG_BASEDIR, prefix)
+    shutil.rmtree(work_dir, ignore_errors=True)
+    os.makedirs(work_dir, exist_ok=True)
+
+    dap.build_disk_index(
+        data.astype(np.float32),
+        distance_metric='l2',
+        index_directory=work_dir,
+        complexity=complexity,
+        graph_degree=graph_degree,
+        search_memory_maximum=max_mem,
+        build_memory_maximum=max_mem,
+        num_threads=num_threads,
+        index_prefix=prefix,
+    )  # type: ignore
+
+    idx = dap.StaticDiskIndex(
+        index_directory=work_dir,
+        num_threads=num_threads,
+        num_nodes_to_cache=0,
+        index_prefix=prefix,
+    )
+
+    # k+1 because the query point itself is included in the results
+    ids, _ = idx.batch_search(
+        data.astype(np.float32),
+        k_neighbors=n_neighbors + 1,
+        complexity=complexity,
+        num_threads=num_threads,
+    )
+
+    n = len(data)
+    G = nx.Graph()
+    G.add_nodes_from(range(n))
+    for i, neighbors in enumerate(ids):
+        for j in neighbors:
+            j = int(j)
+            if j != i:
+                G.add_edge(i, j)
+
+    return G
+
+
 def main():
     if len(argv) != 3:
         print("Usage: python rn_graph.py <tensors_file.pt> <output_file>")

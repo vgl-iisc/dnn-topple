@@ -1,1 +1,1 @@
-python scripts/compute_knn_complexes.py /data2/santriptas/inference_outputs/SmearGateBOSFix_3Seed_1800/smeargate_bos_inference_1800/ /data2/santriptas/inference_outputs/anns_smeargate_1800_92/ 92 ann --transformer --metric c --cpus 96 --workers 2 2>&1 | tee anns_smeargate_1800.log
+python scripts/compute_knn_complexes.py /data2/santriptas/inference_outputs/SmearGateBOSFix_3Seed_1800/smeargate_bos_inference_1800/ /data2/santriptas/inference_outputs/anns_smeargate_1800_92/ 92 ann --transformer --metric c --cpus 96 --workers 1 2>&1 | tee anns_smeargate_1800.log
