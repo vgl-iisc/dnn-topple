@@ -1,0 +1,1 @@
+python scripts/compute_knn_complexes.py /data2/santriptas/inference_outputs/SmearGateBOSFix_3Seed_1800/smeargate_bos_inference_1800/ /data2/santriptas/inference_outputs/anns_euclidean_smeargate_1800_100/ 100 ann --transformer --metric e --disk --max_mem 64 --cpus 32 --workers 1 --existing_index ./rng_old/ 2>&1 | tee anns_smeargate_1800.log

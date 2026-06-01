@@ -262,6 +262,92 @@ def compute_ann_disk_graph(data: np.ndarray, n_neighbors: int = 5, metric: str =
     return G
 
 
+def _find_index_prefix(index_dir: str):
+    """
+    Auto-detect the DiskANN index prefix and type in index_dir.
+
+    Returns (prefix, is_disk) where is_disk is True for disk indices, False for
+    memory indices.  Raises FileNotFoundError if no recognisable index is found.
+
+    Detection rules:
+      - Any file ending in ``_disk.index``  → disk index; prefix = stem before that suffix.
+      - Any file ending in ``_metadata.bin`` → memory index; prefix = stem before that suffix.
+    Disk check is attempted first because disk builds also produce a _metadata.bin file.
+    """
+    for f in os.listdir(index_dir):
+        if f.endswith('_disk.index'):
+            return f[:-len('_disk.index')], True
+    for f in os.listdir(index_dir):
+        if f.endswith('_metadata.bin'):
+            return f[:-len('_metadata.bin')], False
+    raise FileNotFoundError(f"No DiskANN index found in {index_dir!r}")
+
+
+def query_existing_index(index_dir: str, data: np.ndarray, n_neighbors: int,
+                          complexity: int = 75, num_threads: int = 1) -> nx.Graph:
+    """
+    Query a precomputed DiskANN index (memory or disk) stored in index_dir.
+
+    The index prefix is auto-detected via _find_index_prefix.  Both memory
+    (StaticMemoryIndex) and disk (StaticDiskIndex) indices are supported.
+    Returns an undirected k-NN graph (edges added as union of both search directions).
+
+    Parameters
+    ----------
+    index_dir : str
+        Directory containing the precomputed DiskANN index files.
+    data : np.ndarray, shape (n_samples, n_features)
+        Query vectors (the same vectors used to build the index).
+    n_neighbors : int
+        Number of nearest neighbours to retrieve per point.
+    complexity : int
+        Search-list size passed to batch_search.
+    num_threads : int
+        Number of threads for batch_search.
+    """
+    if dap is None:
+        raise ImportError(
+            "diskannpy is required for querying an existing index but is not installed. "
+            "Install it with: pip install diskannpy"
+        )
+
+    prefix, is_disk = _find_index_prefix(index_dir)
+
+    if is_disk:
+        idx = dap.StaticDiskIndex(
+            index_directory=index_dir,
+            num_threads=num_threads,
+            num_nodes_to_cache=0,
+            index_prefix=prefix,
+        )
+    else:
+        idx = dap.StaticMemoryIndex(
+            index_directory=index_dir,
+            num_threads=num_threads,
+            initial_search_complexity=complexity,
+            index_prefix=prefix,
+        )
+
+    # k+1 because the query point itself is almost always returned
+    ids, _ = idx.batch_search(
+        data.astype(np.float32),
+        k_neighbors=n_neighbors + 1,
+        complexity=complexity,
+        num_threads=num_threads,
+    )
+
+    n = len(data)
+    G = nx.Graph()
+    G.add_nodes_from(range(n))
+    for i, neighbors in enumerate(ids):
+        for j in neighbors:
+            j = int(j)
+            if j != i:
+                G.add_edge(i, j)
+
+    return G
+
+
 def main():
     if len(argv) != 3:
         print("Usage: python rn_graph.py <tensors_file.pt> <output_file>")

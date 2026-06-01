@@ -23,7 +23,7 @@ Output (--transformer):
 
 import torch
 from knn_graph import compute_knn_graph
-from rn_graph import compute_rn_graph, compute_ann_graph, compute_ann_disk_graph
+from rn_graph import compute_rn_graph, compute_ann_graph, compute_ann_disk_graph, query_existing_index
 
 import os
 import re
@@ -98,7 +98,7 @@ def _provenance_name(act_file: str) -> str:
 # Worker: standard path
 # ---------------------------------------------------------------------------
 
-def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method, metric="e", cpus_per_worker=1, fill_rng=False, disk=False, max_mem=None):
+def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method, metric="e", cpus_per_worker=1, fill_rng=False, disk=False, max_mem=None, existing_index=None):
         times = {}
         log = get_logger()
 
@@ -149,6 +149,14 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
                 log.info(f"{id}: Found existing files for {tensor_path} with k={max_k}, skipping")
                 continue
 
+            task_index_dir = None
+            if existing_index is not None:
+                task_name = os.path.splitext(tensor_file)[0]
+                task_index_dir = os.path.join(existing_index, task_name)
+                if not os.path.isdir(task_index_dir):
+                    log.info(f"{id}: No index directory at {task_index_dir}, skipping {tensor_file}")
+                    continue
+
             data = load_data()
             log.info(f"{id}: Loaded data from {tensor_path} with shape {data.shape}")
 
@@ -161,7 +169,9 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
                 Gmax = compute_rn_graph(data, min_neighbours=min_k_rng, metric=metric, complexity=75, graph_degree=60, num_threads=cpus_per_worker, prefix=f"worker_{id}")
             elif method == 'ann':
                 start = timer()
-                if disk:
+                if task_index_dir is not None:
+                    Gmax = query_existing_index(task_index_dir, data, max_k, complexity=75, num_threads=cpus_per_worker)
+                elif disk:
                     assert max_mem is not None
                     Gmax = compute_ann_disk_graph(data, n_neighbors=max_k, metric=metric, complexity=75, graph_degree=60, num_threads=cpus_per_worker, prefix=f"worker_{id}", max_mem=max_mem)
                 else:
@@ -210,7 +220,7 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
 # Worker: transformer path
 # ---------------------------------------------------------------------------
 
-def process_files_transformer(worker_id, data_dir, complexes_dir, root, act_files, max_k, method, metric, cpus_per_worker=1, fill_rng=False, disk=False, max_mem=None):
+def process_files_transformer(worker_id, data_dir, complexes_dir, root, act_files, max_k, method, metric, cpus_per_worker=1, fill_rng=False, disk=False, max_mem=None, existing_index=None):
     """Worker: load activations, flatten with mask, run k-NN, save graph + provenance."""
     times = {}
     log = get_logger()
@@ -239,6 +249,14 @@ def process_files_transformer(worker_id, data_dir, complexes_dir, root, act_file
         if any(os.path.exists(p) for p in adj_paths):
             log.info(f'{worker_id}: Output exists for {act_file}, k={max_k} - skipping')
             continue
+
+        task_index_dir = None
+        if existing_index is not None:
+            task_name = os.path.splitext(act_file)[0]
+            task_index_dir = os.path.join(existing_index, task_name)
+            if not os.path.isdir(task_index_dir):
+                log.info(f'{worker_id}: No index directory at {task_index_dir}, skipping {act_file}')
+                continue
 
         acts = torch.load(act_path, weights_only=True)   # (N_sent, max_words, hidden)
         mask = torch.load(mask_path, weights_only=True)  # (N_sent, max_words) bool
@@ -275,7 +293,9 @@ def process_files_transformer(worker_id, data_dir, complexes_dir, root, act_file
             effective_k = max_k
         elif method == 'ann':
             start = timer()
-            if disk:
+            if task_index_dir is not None:
+                G = query_existing_index(task_index_dir, acts_flat, max_k, complexity=75, num_threads=cpus_per_worker)
+            elif disk:
                 assert max_mem is not None
                 G = compute_ann_disk_graph(acts_flat, n_neighbors=max_k, metric=metric,
                                           complexity=75, graph_degree=60,
@@ -347,6 +367,10 @@ def main():
                         help="Use DiskANN disk indices instead of memory indices (only valid with method 'ann')")
     parser.add_argument("--max_mem", type=float, default=None, metavar="GB",
                         help="Memory budget in GB for DiskANN disk index build and search (required with --disk)")
+    parser.add_argument("--existing_index", default=None, metavar="DIR",
+                        help="Directory of precomputed DiskANN indices (only valid with method 'ann'). "
+                             "For each task, looks for a subdirectory named after the task stem, "
+                             "e.g. <DIR>/ablock10_attn_e0/. Files with no matching subdirectory are skipped.")
 
     args = parser.parse_args()
 
@@ -355,6 +379,8 @@ def main():
             parser.error("--disk can only be used with method 'ann'")
         if args.max_mem is None:
             parser.error("--disk requires --max_mem <GB>")
+    if args.existing_index is not None and args.method != 'ann':
+        parser.error("--existing_index can only be used with method 'ann'")
 
     ignore_splits = [s for s in args.ignore_splits.split(",") if s and s != "."]
     ignore_tags   = [t for t in args.ignore_tags.split(",")   if t and t != "."]
@@ -374,12 +400,13 @@ def main():
     fill_rng      = args.fill_rng
     disk          = args.disk
     max_mem       = args.max_mem
+    existing_index = args.existing_index
     mode = "transformer" if args.transformer else "standard"
     logging.info(
         f"Starting k-NN complex computation: mode={mode} data_dir={data_dir} "
         f"complexes_dir={complexes_dir} max_k={max_k} method={method} metric={metric} "
         f"ignore_splits={ignore_splits} ignore_tags={ignore_tags} "
-        f"cpus={cpus} workers={workers} disk={disk} max_mem={max_mem}"
+        f"cpus={cpus} workers={workers} disk={disk} max_mem={max_mem} existing_index={existing_index}"
     )
 
     exact = True
@@ -408,7 +435,7 @@ def main():
 
             groups = [
                 (i, data_dir, complexes_dir, root,
-                 act_files[i::N_groups], max_k, method, metric, cpus_per_worker, fill_rng, disk, max_mem)
+                 act_files[i::N_groups], max_k, method, metric, cpus_per_worker, fill_rng, disk, max_mem, existing_index)
                 for i in range(N_groups)
                 if act_files[i::N_groups]
             ]
@@ -427,7 +454,7 @@ def main():
 
             groups = [
                 (i, data_dir, complexes_dir, root,
-                 tensor_files[i::N_groups], max_k, exact, method, metric, cpus_per_worker, fill_rng, disk, max_mem)
+                 tensor_files[i::N_groups], max_k, exact, method, metric, cpus_per_worker, fill_rng, disk, max_mem, existing_index)
                 for i in range(N_groups)
             ]
             worker_fn = process_files

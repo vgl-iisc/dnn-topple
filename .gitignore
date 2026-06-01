@@ -21,6 +21,7 @@ charts*
 out*.txt
 *.log
 tmp*
+rng_*
 
 # vis out
 saved_states/state_*.pkl
