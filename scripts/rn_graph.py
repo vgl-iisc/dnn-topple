@@ -86,7 +86,7 @@ def repair_low_degree(data: np.ndarray, work_dir: str, prefix: str, graph: nx.Gr
                 graph.add_edge(i, j)
 
 
-def compute_rn_graph(data: np.ndarray, min_neighbours=None, metric = 'e', complexity: int = 75, graph_degree: int = 60, num_threads: int = 1, prefix: str = "tmp") -> nx.Graph:
+def compute_rn_graph(data: np.ndarray, min_neighbours=None, metric = 'e', complexity: int = 75, graph_degree: int = 60, num_threads: int = 1, prefix: str = "tmp", index_store_dir: str = None, task_name: str = None) -> nx.Graph:
     """
     Computes the approx rngraph (vamana index) for the given data.
 
@@ -105,6 +105,13 @@ def compute_rn_graph(data: np.ndarray, min_neighbours=None, metric = 'e', comple
         The number of threads to use for building the index.
     - prefix: str
         A prefix for temporary files created during index building. This is useful to avoid conflicts when running multiple instances in parallel.
+    - index_store_dir: str | None
+        If provided, built indices are stored persistently under this directory (as
+        <index_store_dir>/<task_name>_<prefix>/) and are not deleted after use.
+        When None (default), indices are written to the temporary directory ``RNG_BASEDIR``
+        and cleaned up on the next run.
+    - task_name: str | None
+        Required when index_store_dir is set. Used to name the per-task subdirectory.
     """
 
     if dap is None:
@@ -113,10 +120,14 @@ def compute_rn_graph(data: np.ndarray, min_neighbours=None, metric = 'e', comple
             "Install it with: pip install diskannpy"
         )
 
-    work_dir = os.path.join(RNG_BASEDIR, prefix)
-
-    shutil.rmtree(work_dir, ignore_errors=True)
-    os.makedirs(work_dir, exist_ok=True)
+    if index_store_dir is not None:
+        assert task_name is not None, "task_name must be provided when index_store_dir is set"
+        work_dir = os.path.join(index_store_dir, f"{task_name}_{prefix}")
+        os.makedirs(work_dir, exist_ok=True)
+    else:
+        work_dir = os.path.join(RNG_BASEDIR, prefix)
+        shutil.rmtree(work_dir, ignore_errors=True)
+        os.makedirs(work_dir, exist_ok=True)
 
     metric = 'l2' if metric == 'e' else 'cosine'
 
@@ -140,13 +151,14 @@ def compute_rn_graph(data: np.ndarray, min_neighbours=None, metric = 'e', comple
     return graph
 
 
-def compute_ann_graph(data: np.ndarray, n_neighbors: int = 5, metric: str = 'e', complexity: int = 75, graph_degree: int = 60, num_threads: int = 1, prefix: str = "tmp") -> nx.Graph:
+def compute_ann_graph(data: np.ndarray, n_neighbors: int = 5, metric: str = 'e', complexity: int = 75, graph_degree: int = 60, num_threads: int = 1, prefix: str = "tmp", index_store_dir: str = None, task_name: str = None) -> nx.Graph:
     """
     Computes an approximate k-NN graph using the DiskANN/Vamana index backend.
     Builds the index once, then batch-queries every point for its k nearest
     neighbors.  Edges are added undirected (union of both directions).
 
     Parameters mirror compute_rn_graph; n_neighbors replaces min_neighbours.
+    index_store_dir and task_name have the same semantics as in compute_rn_graph.
     """
     if dap is None:
         raise ImportError(
@@ -154,9 +166,14 @@ def compute_ann_graph(data: np.ndarray, n_neighbors: int = 5, metric: str = 'e',
             "Install it with: pip install diskannpy"
         )
 
-    work_dir = os.path.join(RNG_BASEDIR, prefix)
-    shutil.rmtree(work_dir, ignore_errors=True)
-    os.makedirs(work_dir, exist_ok=True)
+    if index_store_dir is not None:
+        assert task_name is not None, "task_name must be provided when index_store_dir is set"
+        work_dir = os.path.join(index_store_dir, f"{task_name}_{prefix}")
+        os.makedirs(work_dir, exist_ok=True)
+    else:
+        work_dir = os.path.join(RNG_BASEDIR, prefix)
+        shutil.rmtree(work_dir, ignore_errors=True)
+        os.makedirs(work_dir, exist_ok=True)
 
     dap_metric = 'l2' if metric == 'e' else 'cosine'
 
@@ -197,7 +214,7 @@ def compute_ann_graph(data: np.ndarray, n_neighbors: int = 5, metric: str = 'e',
     return G
 
 
-def compute_ann_disk_graph(data: np.ndarray, n_neighbors: int = 5, metric: str = 'e', complexity: int = 75, graph_degree: int = 60, num_threads: int = 1, prefix: str = "tmp", max_mem: float = 4.0) -> nx.Graph:
+def compute_ann_disk_graph(data: np.ndarray, n_neighbors: int = 5, metric: str = 'e', complexity: int = 75, graph_degree: int = 60, num_threads: int = 1, prefix: str = "tmp", max_mem: float = 4.0, index_store_dir: str = None, task_name: str = None) -> nx.Graph:
     """
     Computes an approximate k-NN graph using the DiskANN disk index backend.
     Suitable for very large datasets that do not fit in memory.
@@ -208,6 +225,7 @@ def compute_ann_disk_graph(data: np.ndarray, n_neighbors: int = 5, metric: str =
     Parameters mirror compute_ann_graph, with the addition of:
     - max_mem: float
         Maximum memory budget in GB for both building and searching the disk index.
+    index_store_dir and task_name have the same semantics as in compute_rn_graph.
     """
     if dap is None:
         raise ImportError(
@@ -219,9 +237,14 @@ def compute_ann_disk_graph(data: np.ndarray, n_neighbors: int = 5, metric: str =
             "DiskANN disk indices do not support cosine metric. Only 'e' (l2) is supported."
         )
 
-    work_dir = os.path.join(RNG_BASEDIR, prefix)
-    shutil.rmtree(work_dir, ignore_errors=True)
-    os.makedirs(work_dir, exist_ok=True)
+    if index_store_dir is not None:
+        assert task_name is not None, "task_name must be provided when index_store_dir is set"
+        work_dir = os.path.join(index_store_dir, f"{task_name}_{prefix}")
+        os.makedirs(work_dir, exist_ok=True)
+    else:
+        work_dir = os.path.join(RNG_BASEDIR, prefix)
+        shutil.rmtree(work_dir, ignore_errors=True)
+        os.makedirs(work_dir, exist_ok=True)
 
     dap.build_disk_index(
         data.astype(np.float32),

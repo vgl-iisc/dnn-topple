@@ -1,0 +1,1 @@
+python scripts/compute_knn_complexes.py ~/data_r/inference_outputs/SmearGateBOSFix_3Seed_1800/smeargate_bos_inference_1800/ ~/data_2/anns_euclidean_smeargate_1800_100/ 100 ann --index_store_dir ~/data_2/vam_euclidean_smeargate_1800 --transformer --ignore-tags block0,block5 --metric e --disk --max_mem 48 --cpus 42 --workers 1 2>&1 | tee anns_smeargate_1800.log

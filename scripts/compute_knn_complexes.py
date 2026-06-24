@@ -98,7 +98,7 @@ def _provenance_name(act_file: str) -> str:
 # Worker: standard path
 # ---------------------------------------------------------------------------
 
-def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method, metric="e", cpus_per_worker=1, fill_rng=False, disk=False, max_mem=None, existing_index=None):
+def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method, metric="e", cpus_per_worker=1, fill_rng=False, disk=False, max_mem=None, existing_index=None, index_store_dir=None):
         times = {}
         log = get_logger()
 
@@ -163,19 +163,21 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
             if data.shape not in times:
                 times[data.shape] = []
 
+            task_name = os.path.splitext(tensor_file)[0]
+
             if method == 'r':
                 min_k_rng = max_k if fill_rng else None
                 start = timer()
-                Gmax = compute_rn_graph(data, min_neighbours=min_k_rng, metric=metric, complexity=75, graph_degree=60, num_threads=cpus_per_worker, prefix=f"worker_{id}")
+                Gmax = compute_rn_graph(data, min_neighbours=min_k_rng, metric=metric, complexity=75, graph_degree=60, num_threads=cpus_per_worker, prefix=f"worker_{id}", index_store_dir=index_store_dir, task_name=task_name)
             elif method == 'ann':
                 start = timer()
                 if task_index_dir is not None:
                     Gmax = query_existing_index(task_index_dir, data, max_k, complexity=75, num_threads=cpus_per_worker)
                 elif disk:
                     assert max_mem is not None
-                    Gmax = compute_ann_disk_graph(data, n_neighbors=max_k, metric=metric, complexity=75, graph_degree=60, num_threads=cpus_per_worker, prefix=f"worker_{id}", max_mem=max_mem)
+                    Gmax = compute_ann_disk_graph(data, n_neighbors=max_k, metric=metric, complexity=75, graph_degree=60, num_threads=cpus_per_worker, prefix=f"worker_{id}", max_mem=max_mem, index_store_dir=index_store_dir, task_name=task_name)
                 else:
-                    Gmax = compute_ann_graph(data, n_neighbors=max_k, metric=metric, complexity=75, graph_degree=60, num_threads=cpus_per_worker, prefix=f"worker_{id}")
+                    Gmax = compute_ann_graph(data, n_neighbors=max_k, metric=metric, complexity=75, graph_degree=60, num_threads=cpus_per_worker, prefix=f"worker_{id}", index_store_dir=index_store_dir, task_name=task_name)
             else:
                 start = timer()
                 Gmax = compute_knn_graph(data, n_neighbors=max_k, metric=metric, cpus=cpus_per_worker)
@@ -220,7 +222,7 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
 # Worker: transformer path
 # ---------------------------------------------------------------------------
 
-def process_files_transformer(worker_id, data_dir, complexes_dir, root, act_files, max_k, method, metric, cpus_per_worker=1, fill_rng=False, disk=False, max_mem=None, existing_index=None):
+def process_files_transformer(worker_id, data_dir, complexes_dir, root, act_files, max_k, method, metric, cpus_per_worker=1, fill_rng=False, disk=False, max_mem=None, existing_index=None, index_store_dir=None):
     """Worker: load activations, flatten with mask, run k-NN, save graph + provenance."""
     times = {}
     log = get_logger()
@@ -283,12 +285,15 @@ def process_files_transformer(worker_id, data_dir, complexes_dir, root, act_file
 
         torch.save(coords, prov_path)
 
+        task_name = os.path.splitext(act_file)[0]
+
         if method == 'r':
             start = timer()
             min_k_rng = max_k if fill_rng else None
             G = compute_rn_graph(acts_flat, min_neighbours=min_k_rng, metric=metric,
                                  complexity=75, graph_degree=60,
-                                 num_threads=cpus_per_worker, prefix=f'worker_{worker_id}')
+                                 num_threads=cpus_per_worker, prefix=f'worker_{worker_id}',
+                                 index_store_dir=index_store_dir, task_name=task_name)
             elapsed = timer() - start
             effective_k = max_k
         elif method == 'ann':
@@ -300,11 +305,12 @@ def process_files_transformer(worker_id, data_dir, complexes_dir, root, act_file
                 G = compute_ann_disk_graph(acts_flat, n_neighbors=max_k, metric=metric,
                                           complexity=75, graph_degree=60,
                                           num_threads=cpus_per_worker, prefix=f'worker_{worker_id}',
-                                          max_mem=max_mem)
+                                          max_mem=max_mem, index_store_dir=index_store_dir, task_name=task_name)
             else:
                 G = compute_ann_graph(acts_flat, n_neighbors=max_k, metric=metric,
                                       complexity=75, graph_degree=60,
-                                      num_threads=cpus_per_worker, prefix=f'worker_{worker_id}')
+                                      num_threads=cpus_per_worker, prefix=f'worker_{worker_id}',
+                                      index_store_dir=index_store_dir, task_name=task_name)
             elapsed = timer() - start
             effective_k = max_k
         else:
@@ -371,6 +377,12 @@ def main():
                         help="Directory of precomputed DiskANN indices (only valid with method 'ann'). "
                              "For each task, looks for a subdirectory named after the task stem, "
                              "e.g. <DIR>/ablock10_attn_e0/. Files with no matching subdirectory are skipped.")
+    parser.add_argument("--index_store_dir", default=None, metavar="DIR",
+                        help="If provided, built DiskANN indices are stored persistently under this "
+                             "directory instead of the default temporary location (tmp_rng/). "
+                             "Each index is saved in a subdirectory named <task_stem>_<worker_prefix>, "
+                             "e.g. <DIR>/ablock10_attn_e0_worker_0/. Existing subdirectories are "
+                             "reused rather than overwritten. Only valid with methods 'r', 'ann'.")
 
     args = parser.parse_args()
 
@@ -381,6 +393,8 @@ def main():
             parser.error("--disk requires --max_mem <GB>")
     if args.existing_index is not None and args.method != 'ann':
         parser.error("--existing_index can only be used with method 'ann'")
+    if args.index_store_dir is not None and args.method == 'k':
+        parser.error("--index_store_dir is only valid with methods 'r' and 'ann' (not 'k')")
 
     ignore_splits = [s for s in args.ignore_splits.split(",") if s and s != "."]
     ignore_tags   = [t for t in args.ignore_tags.split(",")   if t and t != "."]
@@ -401,6 +415,7 @@ def main():
     disk          = args.disk
     max_mem       = args.max_mem
     existing_index = args.existing_index
+    index_store_dir = args.index_store_dir
     mode = "transformer" if args.transformer else "standard"
     logging.info(
         f"Starting k-NN complex computation: mode={mode} data_dir={data_dir} "
@@ -435,7 +450,7 @@ def main():
 
             groups = [
                 (i, data_dir, complexes_dir, root,
-                 act_files[i::N_groups], max_k, method, metric, cpus_per_worker, fill_rng, disk, max_mem, existing_index)
+                 act_files[i::N_groups], max_k, method, metric, cpus_per_worker, fill_rng, disk, max_mem, existing_index, index_store_dir)
                 for i in range(N_groups)
                 if act_files[i::N_groups]
             ]
@@ -454,7 +469,7 @@ def main():
 
             groups = [
                 (i, data_dir, complexes_dir, root,
-                 tensor_files[i::N_groups], max_k, exact, method, metric, cpus_per_worker, fill_rng, disk, max_mem, existing_index)
+                 tensor_files[i::N_groups], max_k, exact, method, metric, cpus_per_worker, fill_rng, disk, max_mem, existing_index, index_store_dir)
                 for i in range(N_groups)
             ]
             worker_fn = process_files
