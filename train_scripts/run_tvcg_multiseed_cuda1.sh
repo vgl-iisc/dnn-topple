@@ -1,0 +1,1 @@
+python training-inference/image_classifiers/run_train.py --config training-inference/image_classifiers/runs_tvcg/multiseed/resnet_mnist_b.yaml -o tvcg-multiseed-resnet-mnist-b.log

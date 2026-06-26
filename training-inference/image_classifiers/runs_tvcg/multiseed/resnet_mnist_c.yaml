@@ -1,0 +1,48 @@
+datasets:
+  mnist: ./datasets/mnist/data
+
+train:
+  seed: 4578104318
+  model: resnet18
+  dataset: mnist
+
+  batch_size: 128
+  epochs: 150
+  lr: 0.0001
+  weight_decay: 0.0005
+
+  opt:
+    type: sgd
+
+  schedule:
+    type: cosineWR
+
+  checkpoints_dir: /home/santripta/data2/tvcg_multiseed_checkpoints/
+  tensorboard_dir: /home/santripta/data2/tvcg_multiseed_tensorboard/
+
+  only_last_best: true
+
+infer:
+  output_dir: /home/santripta/data2/tvcg_multiseed_infer/
+
+  collect:
+    - path: layer1
+      tag: 5
+    - path: layer2
+      tag: 4
+    - path: layer3
+      tag: 3
+    - path: layer4
+      tag: 2
+    - path: fc
+      tag: 1
+
+  metrics:
+    - entropy
+    - margin
+    - gradnorm
+
+  epochs: 8
+
+name: resnet_mnist_c
+device: cuda:0
