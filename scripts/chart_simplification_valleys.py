@@ -103,8 +103,8 @@ def main():
     
     plt.style.use("fivethirtyeight")
     
-    ct_dir = argv[1].strip("\\/")
-    charts_dir = argv[2].strip("\\/")
+    ct_dir = argv[1].rstrip("\\/")
+    charts_dir = argv[2].rstrip("\\/")
 
     for (root, dirs, files) in os.walk(ct_dir):
         trees = glob("*.order.bin", root_dir=root)

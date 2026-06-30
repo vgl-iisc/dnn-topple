@@ -1,0 +1,6 @@
+# python experiments/balance_metrics/balance_metrics.py ./datasets/ /home/santripta/data_2/tvcg_multiseed_infer/ /home/santripta/data_2/tvcg_multiseed_strees_loss/ experiment_data/balance_metrics/tvcg/loss_1e6.csv
+# python experiments/balance_metrics/balance_metrics.py ./datasets/ /home/santripta/data_2/tvcg_multiseed_infer/ /home/santripta/data_2/tvcg_multiseed_strees_gradnorm/ experiment_data/balance_metrics/tvcg/gradnorm_1e6.csv
+# python experiments/balance_metrics/balance_metrics.py ./datasets/ /home/santripta/data_2/tvcg_multiseed_infer/ /home/santripta/data_2/tvcg_multiseed_jtrees_gradnorm/ experiment_data/balance_metrics/tvcg/gradnorm_j_1e6.csv
+# python experiments/balance_metrics/balance_metrics.py ./datasets/ /home/santripta/data_2/tvcg_multiseed_infer/ /home/santripta/data_2/tvcg_multiseed_strees_entropy/ experiment_data/balance_metrics/tvcg/entropy_1e6.csv
+# python experiments/balance_metrics/balance_metrics.py ./datasets/ /home/santripta/data_2/tvcg_multiseed_infer/ /home/santripta/data_2/tvcg_multiseed_strees_margin/ experiment_data/balance_metrics/tvcg/margin_1e6.csv
+python experiments/balance_metrics/balance_metrics.py ./datasets/ /home/santripta/data_2/tvcg_multiseed_infer/ /home/santripta/data_2/tvcg_multiseed_jtrees_margin/ experiment_data/balance_metrics/tvcg/margin_j_1e6.csv

@@ -22,17 +22,18 @@ from contour_tree import process_contour_trees
 CPUS = 24
 
 def main():
-    if len(argv) != 5:
-        print("Usage: python compute_contour_trees.py <data_dir> <complexes_dir> <ct_dir> <type: c | s | j (contour, split, or join)>")
+    if len(argv) < 5:
+        print("Usage: python compute_contour_trees.py <data_dir> <complexes_dir> <ct_dir> <type: c | s | j (contour, split, or join)> [scalar-field: Losses | GradNorm | Entropy | Margin]")
         return
     
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(processName)s - %(levelname)s: %(message)s')
     log_to_stderr(logging.INFO)
     
-    data_dir = argv[1].strip("\\/")
-    complexes_dir = argv[2].strip("\\/")
-    ctrees_dir = argv[3].strip("\\/")
+    data_dir = argv[1].rstrip("\\/")
+    complexes_dir = argv[2].rstrip("\\/")
+    ctrees_dir = argv[3].rstrip("\\/")
     ct_type = argv[4].strip().lower()
+    scalar_field = argv[5].strip() if len(argv) > 5 else "Losses"
 
     if ct_type not in ["c", "s", "j"]:
         print("Error: ct_type must be one of 'c', 's', or 'j'")
@@ -50,16 +51,16 @@ def main():
     all_tasks = []
     
     for (root, dirs, files) in os.walk(data_dir):
-        if not "Losses" in root:
+        if not scalar_field in root:
             continue
     
-        scalar_files = [f for f in files if f.startswith("loss")]
+        scalar_files = [f for f in files if f.startswith(scalar_field.lower())]
 
         if len(scalar_files) == 0:
             continue
 
         # not in the argand plane
-        complex_root = root.replace(f"Losses{os.sep}", "").replace(data_dir, complexes_dir)
+        complex_root = root.replace(f"{scalar_field}{os.sep}", "").replace(data_dir, complexes_dir)
 
         output_root = complex_root.replace(complexes_dir, ctrees_dir)
         os.makedirs(output_root, exist_ok=True)

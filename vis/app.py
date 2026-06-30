@@ -187,19 +187,19 @@ def main():
     
     st.set_page_config(layout="wide")
 
-    st.session_state.ct_dir = args.ct_dir.strip("/\\")
-    st.session_state.landscapes_dir = args.landscapes_dir.strip("/\\")
-    st.session_state.datasets_dir = args.datasets_dir.strip("/\\")
+    st.session_state.ct_dir = args.ct_dir.rstrip("/\\")
+    st.session_state.landscapes_dir = args.landscapes_dir.rstrip("/\\")
+    st.session_state.datasets_dir = args.datasets_dir.rstrip("/\\")
     
     st.session_state.model_eq_dataset = args.model_eq_dataset
     st.session_state.no_preds = args.no_preds
 
     # Determine BERT mode: explicit flag takes priority; fall back to auto-detection.
-    is_bert = args.bert or _detect_bert_from_ct_dir(st.session_state.ct_dir)
+    is_bert = args.bert or False
     st.session_state.is_bert = is_bert
-    st.session_state.complexes_dir = args.complexes_dir.strip("/\\") if args.complexes_dir else ""
+    st.session_state.complexes_dir = args.complexes_dir.rstrip("/\\") if args.complexes_dir else ""
     if args.conll_dir:
-        conll_dir = args.conll_dir.strip("/\\")
+        conll_dir = args.conll_dir.rstrip("/\\")
     else:
         conll_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../datasets/conll/data/conll2003')
     st.session_state.conll_dir = conll_dir

@@ -383,6 +383,9 @@ def main():
                              "Each index is saved in a subdirectory named <task_stem>_<worker_prefix>, "
                              "e.g. <DIR>/ablock10_attn_e0_worker_0/. Existing subdirectories are "
                              "reused rather than overwritten. Only valid with methods 'r', 'ann'.")
+    parser.add_argument("--timing_output", default=None, metavar="FILE",
+                        help="Path to write the timing pickle file. If omitted, a default name is "
+                             "derived from the method and written in the current directory.")
 
     args = parser.parse_args()
 
@@ -489,7 +492,9 @@ def main():
 
         logging.info(f"Done with {root}")
 
-    if args.transformer:
+    if args.timing_output is not None:
+        name = args.timing_output
+    elif args.transformer:
         prefix = "rn" if method == 'r' else ("ann" if method == 'ann' else "knn")
         name = f"{prefix}_times_transformer_{max_k}_{metric}.pkl"
     elif method == 'r':

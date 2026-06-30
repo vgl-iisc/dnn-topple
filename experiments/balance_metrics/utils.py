@@ -26,8 +26,6 @@ CP_COLORING = {
     ct.REGULAR: "#d822df", # type: ignore
 }
 
-stree_path = "C:\\home\\sumatra_llvis_data\\strees_pt\\resnet50pt_imagenet\\trainUval"
-data_path = "C:\\home\\sumatra_llvis_data\\landscape_data_pt"
 datasets_path = ".\\datasets"
 
 class RichFeature:

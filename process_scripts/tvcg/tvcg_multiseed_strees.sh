@@ -1,0 +1,4 @@
+python scripts/compute_contour_trees.py /home/santripta/data_2/tvcg_multiseed_infer/ /home/santripta/data_2/tvcg_multiseed_knn/ /home/santripta/data_2/tvcg_multiseed_strees_loss/ s Losses
+python scripts/compute_contour_trees.py /home/santripta/data_2/tvcg_multiseed_infer/ /home/santripta/data_2/tvcg_multiseed_knn/ /home/santripta/data_2/tvcg_multiseed_strees_gradnorm/ s GradNorm
+python scripts/compute_contour_trees.py /home/santripta/data_2/tvcg_multiseed_infer/ /home/santripta/data_2/tvcg_multiseed_knn/ /home/santripta/data_2/tvcg_multiseed_strees_entropy/ s Entropy
+python scripts/compute_contour_trees.py /home/santripta/data_2/tvcg_multiseed_infer/ /home/santripta/data_2/tvcg_multiseed_knn/ /home/santripta/data_2/tvcg_multiseed_strees_margin/ s Margin

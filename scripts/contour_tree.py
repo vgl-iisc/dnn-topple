@@ -15,6 +15,8 @@ import os
 
 from multiprocessing import get_logger
 
+import torch
+
 from utils import get_adjlist_from_graph
 
 def compute_contour_tree(G: nx.Graph, scalar_function: np.ndarray, tree_type: ct.TreeType = ct.TreeType.TypeContourTree) -> ct.MergeTree:
@@ -66,7 +68,7 @@ def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output
     name = name.replace("adj_", "ctree_").replace("_connected", "")
 
     # Load the scalar function
-    scalar_function = np.loadtxt(scalar_fn_file)
+    scalar_function = np.loadtxt(scalar_fn_file) if scalar_fn_file.endswith(".txt") else torch.load(scalar_fn_file)
     log.info(f"{worker_id}: Loaded scalar function with {len(scalar_function)} values from {scalar_fn_file}")
 
     if len(scalar_function) != G.number_of_nodes():

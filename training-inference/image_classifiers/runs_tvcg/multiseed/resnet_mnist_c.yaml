@@ -2,7 +2,7 @@ datasets:
   mnist: ./datasets/mnist/data
 
 train:
-  seed: 4578104318
+  seed: 4574318
   model: resnet18
   dataset: mnist
 
@@ -17,13 +17,13 @@ train:
   schedule:
     type: cosineWR
 
-  checkpoints_dir: /home/santripta/data2/tvcg_multiseed_checkpoints/
-  tensorboard_dir: /home/santripta/data2/tvcg_multiseed_tensorboard/
+  checkpoints_dir: /home/santripta/data_2/tvcg_multiseed_checkpoints/
+  tensorboard_dir: /home/santripta/data_2/tvcg_multiseed_tensorboard/
 
   only_last_best: true
 
 infer:
-  output_dir: /home/santripta/data2/tvcg_multiseed_infer/
+  output_dir: /home/santripta/data_2/tvcg_multiseed_infer/
 
   collect:
     - path: layer1

@@ -182,6 +182,12 @@ class LossLandscapeExperiment:
         self.pretty_layer = self.layer_tag[1:]
         self.epoch_tag = f"e{epoch}"
         self.model_data = f"{self.model}_{self.dataset.name}"
+
+        if self.model.startswith("resnet") and (self.model.endswith("_a") or self.model.endswith("_b") or self.model.endswith("_c")):
+            tag = self.model.split("_")[-1]
+            self.model_data = f"resnet_{self.dataset.name}_{tag}"
+        else:
+            self.model_data = f"{self.model}_{self.dataset.name}" if not st.session_state.model_eq_dataset else self.dataset.name
         
         self.landscape_dir = landscape_dir
         self.ct_dir = ct_dir
@@ -198,9 +204,9 @@ class LossLandscapeExperiment:
         
         self.paths = {
             "ctree": os.path.join(ct_dir, f"{self.model_data}", self.split, f"ctree_{self.layer_tag}_{self.epoch_tag}_{self.k}"),
-            "losses": os.path.join(data_dir, f"{self.model_data}", "Losses", self.split, f"losses_{self.epoch_tag}.txt"),
-            "tensors": os.path.join(data_dir, f"{self.model_data}", "Tensors", self.split, f"vectors_{self.layer_tag}_{self.epoch_tag}.txt"),
-            "predictions": os.path.join(data_dir, f"{self.model_data}", "Predictions", self.split, f"predictions_{self.epoch_tag}.txt"),
+            "losses": os.path.join(data_dir, f"{self.model_data}", "Losses", self.split, f"losses_{self.epoch_tag}.pt"),
+            "tensors": os.path.join(data_dir, f"{self.model_data}", "Tensors", self.split, f"{self.layer_tag}_{self.epoch_tag}.pt"),
+            "predictions": os.path.join(data_dir, f"{self.model_data}", "Predictions", self.split, f"predictions_{self.epoch_tag}.pt"),
             "compiled_res": os.path.join(data_dir, f"{self.model_data}", "compiled_results.csv"),
         }
         
@@ -278,8 +284,10 @@ def find_all_experiments(datasets: dict[str, Dataset], data_dir: str, ct_dir: st
         model = parts[0]
         dataset_name = "_".join(parts[1:])
         
-        # print(f"Model: {model}, Dataset: {dataset_name}, Split: {split}")
-
+        if dataset_name.startswith("mnist") and len(parts) > 2:
+            dataset_name = "mnist"
+            model = model + "_" + "_".join(parts[2:])
+        
         if dataset_name not in datasets:
             print(f"Warning: Dataset {dataset_name} not found for model {model}")
             continue

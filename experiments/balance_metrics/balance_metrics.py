@@ -600,8 +600,9 @@ def process_experiment(worker_id: int, experiment, data_dir: str, ct_dir: str, t
 				result['val_acc'] = accuracy_val.loc[(accuracy_val['Step'] == experiment.epoch + 1)]["Value"].values[0]
 			else:
 				accuracy = process_file(paths["compiled_res"], experiment.epoch)
-				result["train_acc"] = accuracy.loc[accuracy['Split'] == 'Train', 'accuracy'].values[0] if 'Train' in accuracy['Split'].values else np.nan
-				result["val_acc"] = accuracy.loc[accuracy['Split'] == 'Val', 'accuracy'].values[0] if 'Val' in accuracy['Split'].values else np.nan
+				split_vals = accuracy['Split'].str.lower()
+				result["train_acc"] = accuracy.loc[split_vals == 'train', 'accuracy'].values[0] if 'train' in split_vals.values else np.nan
+				result["val_acc"] = accuracy.loc[split_vals == 'val', 'accuracy'].values[0] if 'val' in split_vals.values else np.nan
 		
 		log.info(f"{worker_id}: Completed experiment: {experiment}")
 		return result

@@ -135,7 +135,7 @@ def get_preds(exp) -> list[int]:
         ct_dir=st.session_state.ct_dir,
     )["predictions"]
     with open(pred_path, "rb") as f:
-        preds = np.loadtxt(f, dtype=np.int32).reshape(-1)
+        preds = torch.load(f, map_location="cpu").to(dtype=torch.int32).numpy().reshape(-1)
     return preds.tolist()
 
 @st.cache_resource(hash_funcs=_CACHE_HASH_FUNCS)
