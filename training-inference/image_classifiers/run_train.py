@@ -18,6 +18,7 @@ import pandas as pd
 import psutil
 import torch
 import torch.nn as nn
+from torch.func import grad as func_grad, vmap, functional_call
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
@@ -318,6 +319,7 @@ def train_epoch(model, loader, criterion, optimizer, device, epoch, writer=None,
 		"criterion_collect must be provided if collect_outputs is True"
 
 	need_input_grad = collect_outputs and 'gradnorm' in extra_metrics
+	need_param_grad = collect_outputs and 'gradnorm_importance' in extra_metrics
 
 	collected_losses       = [] if collect_outputs else None
 	collected_labels       = [] if collect_outputs else None
@@ -364,6 +366,8 @@ def train_epoch(model, loader, criterion, optimizer, device, epoch, writer=None,
 					outputs, labels, extra_metrics,
 					images_for_grad=images_for_grad,
 					criterion_collect=criterion_collect,
+					model=model,
+					images=images,
 				)
 
 		optimizer.zero_grad()
@@ -418,6 +422,8 @@ def validate(model, loader, criterion, device, collect_outputs=False, criterion_
 		"criterion_collect must be provided if collect_outputs is True"
 
 	need_input_grad = collect_outputs and 'gradnorm' in extra_metrics
+	need_param_grad = collect_outputs and 'gradnorm_importance' in extra_metrics
+	need_any_grad   = need_input_grad or need_param_grad
 
 	collected_losses       = [] if collect_outputs else None
 	collected_labels       = [] if collect_outputs else None
@@ -445,21 +451,27 @@ def validate(model, loader, criterion, device, collect_outputs=False, criterion_
 			images = images.to(device)
 			labels = labels.to(device)
 
-			if need_input_grad:
+			if need_any_grad:
 				# torch.enable_grad() overrides the outer no_grad() for this block.
 				with torch.enable_grad():
-					images_for_grad = images.detach().requires_grad_(True)
-					outputs = model(images_for_grad)
+					if need_input_grad:
+						images_for_grad = images.detach().requires_grad_(True)
+						outputs = model(images_for_grad)
+					else:
+						images_for_grad = None
+						outputs = model(images)
 					batch_extra = compute_batch_extra_metrics(
 						outputs, labels, extra_metrics,
 						images_for_grad=images_for_grad,
 						criterion_collect=criterion_collect,
+						model=model,
+						images=images,
 					)
 				outputs = outputs.detach()
 			else:
 				outputs = model(images)
 				if collect_outputs and extra_metrics:
-					batch_extra = compute_batch_extra_metrics(outputs, labels, extra_metrics)
+					batch_extra = compute_batch_extra_metrics(outputs, labels, extra_metrics, model=model)
 				else:
 					batch_extra = {}
 
@@ -503,15 +515,46 @@ def save_checkpoint(state, ckpt_dir, epoch):
 
 
 # Recognised extra metric names and their output sub-directory names.
-EXTRA_METRIC_NAMES = ('entropy', 'margin', 'gradnorm')
+EXTRA_METRIC_NAMES = ('entropy', 'margin', 'gradnorm', 'gradnorm_importance')
 EXTRA_METRIC_DIRS  = {
-	'entropy':  'Entropy',
-	'margin':   'Margin',
-	'gradnorm': 'GradNorm',
+	'entropy':             'Entropy',
+	'margin':              'Margin',
+	'gradnorm':            'GradNorm',
+	'gradnorm_importance': 'GradNorm',
 }
 
 
-def compute_batch_extra_metrics(logits, labels, metrics, images_for_grad=None, criterion_collect=None):
+def _per_sample_gradnorm_vmap(model, criterion, images, labels):
+	"""Per-sample ||∇_θ L_i||_2 via vmap+grad.
+
+	One vectorised forward-backward pass instead of B sequential ones with
+	retain_graph=True, so the full computation graph is never held in memory.
+	Returns (B,) float32 CPU tensor.
+	"""
+	training_state = model.training
+	model.eval()
+
+	try:
+		params = {k: v for k, v in model.named_parameters() if v.requires_grad}
+
+		def loss_fn(params, x, y):
+			out = functional_call(model, params, (x.unsqueeze(0),))
+			return criterion(out, y.unsqueeze(0)).squeeze()
+
+		per_sample_grads = vmap(func_grad(loss_fn), in_dims=(None, 0, 0))(
+			params, images.detach(), labels,
+		)
+		B = images.shape[0]
+		gnorm_sq = torch.zeros(B, device=images.device)
+		for g in per_sample_grads.values():
+			gnorm_sq = gnorm_sq + g.detach().reshape(B, -1).norm(dim=1).pow(2)
+		return gnorm_sq.sqrt().cpu()
+	finally:
+		model.train(training_state)
+
+
+def compute_batch_extra_metrics(logits, labels, metrics, images_for_grad=None,
+                                criterion_collect=None, model=None, images=None):
 	"""Compute requested per-sample extra metrics for one batch.
 
 	Args:
@@ -519,7 +562,8 @@ def compute_batch_extra_metrics(logits, labels, metrics, images_for_grad=None, c
 		labels           : (B,) int64 on the same device as logits.
 		metrics          : collection of metric names to compute.
 		images_for_grad  : leaf tensor with requires_grad=True (needed for 'gradnorm').
-		criterion_collect: CrossEntropyLoss(reduction='none') (needed for 'gradnorm').
+		criterion_collect: CrossEntropyLoss(reduction='none') (needed for 'gradnorm' / 'gradnorm_importance').
+		model            : nn.Module (needed for 'gradnorm_importance').
 
 	Returns:
 		dict mapping metric name -> CPU float32 tensor of shape (B,).
@@ -544,12 +588,16 @@ def compute_batch_extra_metrics(logits, labels, metrics, images_for_grad=None, c
 		if images_for_grad is None or criterion_collect is None:
 			raise ValueError('images_for_grad and criterion_collect are required for the gradnorm metric')
 		per_sample_loss = criterion_collect(logits, labels)
-		# retain_graph=True so the outer loss.backward() can still use the graph.
 		grads = torch.autograd.grad(
 			per_sample_loss.sum(), images_for_grad,
 			create_graph=False, retain_graph=True,
 		)[0]
 		result['gradnorm'] = grads.detach().flatten(1).norm(dim=1).cpu()
+
+	if 'gradnorm_importance' in metrics:
+		if model is None or criterion_collect is None or images is None:
+			raise ValueError('model, criterion_collect, and images are required for gradnorm_importance')
+		result['gradnorm_importance'] = _per_sample_gradnorm_vmap(model, criterion_collect, images, labels)
 
 	return result
 
@@ -675,7 +723,11 @@ def save_inference_outputs(
 					reordered_acts[slots[mask]] = acts_cpu[mask]
 			logger.info(f'Activation shape for tag {tag!r}: {reordered_acts.shape}')
 			torch.save(reordered_acts, os.path.join(tens_dir, f'a{tag}_e{epoch}.pt'))
-			del reordered_acts
+
+			# L2 norm of each sample's flattened activation vector.
+			l2 = reordered_acts.norm(dim=1)  # (N,)
+			torch.save(l2, os.path.join(tens_dir, f'l2_{tag}_e{epoch}.pt'))
+			del l2, reordered_acts
 			gc.collect()
 
 		if split in ('train', 'val'):

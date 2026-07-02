@@ -2,3 +2,6 @@
 	path = deps/contour-tree
 	url = https://github.com/SantriptaSharma/contour-tree.git
 	branch = llvis
+[submodule "deps/edit-dists"]
+	path = deps/edit-dists
+	url = https://github.com/scivislab/BDI-ED

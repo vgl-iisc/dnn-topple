@@ -404,6 +404,38 @@ def _is_batch_level_scheduler(cfg):
 
 
 # ---------------------------------------------------------------------------
+# Scalar field helpers
+# ---------------------------------------------------------------------------
+
+EXTRA_METRIC_NAMES = ('gradnorm_importance',)
+
+
+def _compute_per_sentence_gradnorm(per_sent_losses, model):
+	"""Compute per-sentence gradient norm ||∇_θ L_i||_2 w.r.t. all model parameters.
+
+	per_sent_losses : (B,) tensor with grad_fn (one summed loss per sentence).
+	                  Caller must ensure the computation graph is still alive
+	                  (i.e. has not been freed by a prior backward() call).
+	Returns         : (B,) float32 CPU tensor.
+
+	Uses retain_graph=True on every call so the same graph can later be used
+	for the training loss backward() without an extra forward pass.
+	"""
+	params = [p for p in model.parameters() if p.requires_grad]
+	gnorms = []
+	for loss_i in per_sent_losses:
+		grads = torch.autograd.grad(
+			loss_i, params,
+			retain_graph=True,   # kept alive for the subsequent loss.backward()
+			create_graph=False,
+			allow_unused=True,
+		)
+		gnorm_sq = sum(g.detach().norm() ** 2 for g in grads if g is not None)
+		gnorms.append(gnorm_sq.item() ** 0.5)
+	return torch.tensor(gnorms, dtype=torch.float32)
+
+
+# ---------------------------------------------------------------------------
 # Train / validate
 # ---------------------------------------------------------------------------
 
@@ -417,20 +449,22 @@ def _get_max_words(loader):
 
 def train_epoch(model, loader, criterion, criterion_collect, optimizer,
                 scheduler, step_per_batch, device, epoch, writer, acts,
-                max_grad_norm=1.0):
+                max_grad_norm=1.0, extra_metrics=frozenset()):
 	model.train()
 	running_loss    = 0.0
 	total_valid     = 0
 	total_correct   = 0
 	max_words       = _get_max_words(loader)
 
-	collected_word_losses = []
-	collected_word_labels = []
-	collected_word_preds  = []
-	collected_word_masks  = []
-	collected_fsp         = []
-	collected_perm_indices = []
+	collected_word_losses       = []
+	collected_word_labels       = []
+	collected_word_preds        = []
+	collected_word_masks        = []
+	collected_fsp               = []
+	collected_perm_indices      = []
+	collected_gradnorm_importance = []
 
+	need_gradnorm = 'gradnorm_importance' in extra_metrics
 	prev_mem = None
 
 	for step, batch in tqdm(enumerate(loader), total=len(loader), desc=f'Epoch {epoch}'):
@@ -454,12 +488,25 @@ def train_epoch(model, loader, criterion, criterion_collect, optimizer,
 		# Training loss: mean CE over all first-subword positions (label != -100).
 		loss = criterion(logits.view(-1, num_labels), labels.view(-1))
 
-		# Per-token loss and predictions for collection (no gradient needed).
-		with torch.no_grad():
-			per_token_loss = criterion_collect(
+		# Per-sentence gradnorm: reuse the live computation graph before zero_grad.
+		# retain_graph=True on every call keeps the graph alive for loss.backward().
+		if need_gradnorm:
+			per_token_loss_g = criterion_collect(
 				logits.view(-1, num_labels), labels.view(-1)
-			).view(B, seq_len).detach().cpu()   # (B, seq_len), 0.0 at IGNORE positions
+			).view(B, seq_len)  # (B, seq_len), keeps grad_fn
+			valid_float      = (labels != IGNORE_INDEX).float().detach()
+			per_sent_losses  = (per_token_loss_g * valid_float).sum(dim=1)  # (B,) with grad_fn
+			batch_gnorms     = _compute_per_sentence_gradnorm(per_sent_losses, model)
+			per_token_loss   = per_token_loss_g.detach().cpu()
+		else:
+			batch_gnorms = None
+			# Per-token loss for collection (no gradient needed).
+			with torch.no_grad():
+				per_token_loss = criterion_collect(
+					logits.view(-1, num_labels), labels.view(-1)
+				).view(B, seq_len).detach().cpu()
 
+		with torch.no_grad():
 			preds = logits.argmax(-1).detach().cpu()   # (B, seq_len)
 
 			fsp_safe     = fsp.clamp(min=0)            # (B, max_words)
@@ -467,6 +514,10 @@ def train_epoch(model, loader, criterion, criterion_collect, optimizer,
 			word_preds   = torch.gather(preds, 1, fsp_safe)          # (B, max_words)
 			word_preds_stored        = word_preds.clone()
 			word_preds_stored[~word_mask] = IGNORE_INDEX
+
+			if batch_gnorms is not None:
+				# Broadcast sentence-level gradnorm to word level; 0 at padding positions.
+				gnorm_word = batch_gnorms.unsqueeze(1).expand(B, max_words) * word_mask.float()
 
 		optimizer.zero_grad()
 		loss.backward()
@@ -489,35 +540,41 @@ def train_epoch(model, loader, criterion, criterion_collect, optimizer,
 		collected_word_masks.append(word_mask.detach())
 		collected_fsp.append(fsp.detach())
 		collected_perm_indices.append(perm_idxs.to(dtype=torch.int64))
+		if batch_gnorms is not None:
+			collected_gradnorm_importance.append(gnorm_word.detach())
 
 	epoch_loss = running_loss / max(total_valid, 1)
 	epoch_acc  = total_correct / max(total_valid, 1)
 
 	return epoch_loss, epoch_acc, {
-		'word_losses':             collected_word_losses,
-		'word_labels':             collected_word_labels,
-		'word_preds':              collected_word_preds,
-		'word_masks':              collected_word_masks,
-		'first_subword_positions': collected_fsp,
-		'perm_indices':            collected_perm_indices,
-		'max_words':               max_words,
+		'word_losses':              collected_word_losses,
+		'word_labels':              collected_word_labels,
+		'word_preds':               collected_word_preds,
+		'word_masks':               collected_word_masks,
+		'first_subword_positions':  collected_fsp,
+		'perm_indices':             collected_perm_indices,
+		'max_words':                max_words,
+		'gradnorm_importance':      collected_gradnorm_importance,
 	}
 
 
-def validate(model, loader, criterion, criterion_collect, device, epoch=0, writer=None, acts={}):
+def validate(model, loader, criterion, criterion_collect, device, epoch=0, writer=None, acts={},
+             extra_metrics=frozenset()):
 	model.eval()
 	running_loss  = 0.0
 	total_valid   = 0
 	total_correct = 0
 	max_words     = _get_max_words(loader)
 
-	collected_word_losses  = []
-	collected_word_labels  = []
-	collected_word_preds   = []
-	collected_word_masks   = []
-	collected_fsp          = []
-	collected_perm_indices = []
+	collected_word_losses         = []
+	collected_word_labels         = []
+	collected_word_preds          = []
+	collected_word_masks          = []
+	collected_fsp                 = []
+	collected_perm_indices        = []
+	collected_gradnorm_importance = []
 
+	need_gradnorm = 'gradnorm_importance' in extra_metrics
 	prev_mem = None
 
 	with torch.no_grad():
@@ -563,6 +620,20 @@ def validate(model, loader, criterion, criterion_collect, device, epoch=0, write
 			collected_fsp.append(fsp.detach())
 			collected_perm_indices.append(perm_idxs.to(dtype=torch.int64))
 
+			if need_gradnorm:
+				# Second forward pass with grad tracking to compute per-sentence gradient norms.
+				with torch.enable_grad():
+					logits_g = model(input_ids, attention_mask, token_type_ids)
+					ptl_g    = criterion_collect(
+						logits_g.view(-1, num_labels), labels.view(-1)
+					).view(B, seq_len)
+					valid_float     = (labels != IGNORE_INDEX).float().detach()
+					per_sent_losses = (ptl_g * valid_float).sum(dim=1)
+					batch_gnorms    = _compute_per_sentence_gradnorm(per_sent_losses, model)
+					del logits_g, ptl_g, per_sent_losses
+				gnorm_word = batch_gnorms.unsqueeze(1).expand(B, max_words) * word_mask.float()
+				collected_gradnorm_importance.append(gnorm_word.detach())
+
 	epoch_loss = running_loss / max(total_valid, 1)
 	epoch_acc  = total_correct / max(total_valid, 1)
 
@@ -574,6 +645,7 @@ def validate(model, loader, criterion, criterion_collect, device, epoch=0, write
 		'first_subword_positions': collected_fsp,
 		'perm_indices':            collected_perm_indices,
 		'max_words':               max_words,
+		'gradnorm_importance':     collected_gradnorm_importance,
 	}
 
 
@@ -607,11 +679,12 @@ def save_inference_outputs(
 		fixed_indices_by_split = {}
 
 	def write_output(split, output, collected_activations):
-		loss_dir   = os.path.join(output_root, 'Losses',      split)
-		preds_dir  = os.path.join(output_root, 'Predictions', split)
-		labels_dir = os.path.join(output_root, 'Labels',      split)
-		tens_dir   = os.path.join(output_root, 'Tensors',     split)
-		idxs_dir   = os.path.join(output_root, 'Indices',     split)
+		loss_dir    = os.path.join(output_root, 'Losses',      split)
+		preds_dir   = os.path.join(output_root, 'Predictions', split)
+		labels_dir  = os.path.join(output_root, 'Labels',      split)
+		tens_dir    = os.path.join(output_root, 'Tensors',     split)
+		idxs_dir    = os.path.join(output_root, 'Indices',     split)
+		gnorm_dir   = os.path.join(output_root, 'GradNorm',    split)
 		for d in (loss_dir, preds_dir, labels_dir, tens_dir, idxs_dir):
 			os.makedirs(d, exist_ok=True)
 
@@ -667,7 +740,22 @@ def save_inference_outputs(
 			)
 			logger.info(f'Saving activations for tag {tag!r}, shape: {reordered_acts.shape}')
 			torch.save(reordered_acts, os.path.join(tens_dir, f'a{tag}_e{epoch}.pt'))
-			del reordered_acts
+
+			# L2 norm of each word's activation vector.
+			l2 = reordered_acts.norm(dim=-1)  # (N, max_words)
+			torch.save(l2, os.path.join(tens_dir, f'l2_{tag}_e{epoch}.pt'))
+			del l2, reordered_acts
+			gc.collect()
+
+		# Gradient-norm importance field.
+		gradnorm_batches = output.get('gradnorm_importance', [])
+		if gradnorm_batches:
+			os.makedirs(gnorm_dir, exist_ok=True)
+			reordered_gradnorm = reorder_2d_batches(
+				gradnorm_batches, perm_batches, selection_lookup, selected_size,
+			)
+			torch.save(reordered_gradnorm, os.path.join(gnorm_dir, f'gradnorm_importance_e{epoch}.pt'))
+			del reordered_gradnorm
 			gc.collect()
 
 		del reordered_losses, reordered_preds, reordered_masks, reordered_labels
@@ -685,8 +773,12 @@ def save_inference_outputs(
 		combined_outputs[key] = train_outputs[key] + val_outputs[key]
 	train_perm = [idx.to(dtype=torch.int64) for idx in train_outputs['perm_indices']]
 	val_perm   = [idx.to(dtype=torch.int64) + train_size for idx in val_outputs['perm_indices']]
-	combined_outputs['perm_indices'] = train_perm + val_perm
-	combined_outputs['max_words']    = train_outputs['max_words']
+	combined_outputs['perm_indices']        = train_perm + val_perm
+	combined_outputs['max_words']           = train_outputs['max_words']
+	combined_outputs['gradnorm_importance'] = (
+		train_outputs.get('gradnorm_importance', []) +
+		val_outputs.get('gradnorm_importance', [])
+	)
 
 	combined_acts = {tag: train_activations[tag] + val_activations[tag]
 	                 for tag in train_activations}
@@ -774,6 +866,7 @@ def do_run(
 	prev_mem      = get_memory_usage(device)
 	ds_subsample  = inference_cfg.get('ds_subsample', None)
 	max_grad_norm = float(cfg.get('max_grad_norm', 1.0))
+	extra_metrics = frozenset(inference_cfg.get('metrics', []))
 	fixed_ds_subsample_indices = {}
 
 	collection = inference_cfg.get('collect', [])
@@ -810,7 +903,7 @@ def do_run(
 		train_loss, train_acc, train_outputs = train_epoch(
 			model, train_loader, criterion, criterion_collect, optimizer,
 			scheduler, step_per_batch, device, epoch, writer, train_activations,
-			max_grad_norm=max_grad_norm,
+			max_grad_norm=max_grad_norm, extra_metrics=extra_metrics,
 		)
 
 		if should_collect_inference:
@@ -825,6 +918,7 @@ def do_run(
 		val_loss, val_acc, val_outputs = validate(
 			model, val_loader, criterion, criterion_collect,
 			device, epoch, writer, val_activations,
+			extra_metrics=extra_metrics,
 		)
 
 		if should_collect_inference:

@@ -50,6 +50,9 @@ infer:
   epochs:
     - all   # collect every epoch; alternatives: last | [start, end, step] | N (every N epochs)
 
+  metrics:
+    - gradnorm_importance
+
   # ds_subsample: null      # sentence-level balanced subsample size; null = use full split
 
 name: bert_ner_conll

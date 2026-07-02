@@ -1,0 +1,1 @@
+python training-inference/image_classifiers/run_train.py --config training-inference/image_classifiers/runs_tvcg/multifield/resnet_mnist.yaml -o tvcg-multifield-resnet-mnist.log
