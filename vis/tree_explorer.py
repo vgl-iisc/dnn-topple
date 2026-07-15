@@ -55,7 +55,9 @@ def render_tree_explorer(id: int):
             "majority class": exp.dataset.classes[f.majority_class],
             "homogeneity": f.homogeneity,
             "major class size": f.major_class_size,
-            "major class coverage": get_class_coverage(exp, f.major_class_size, f.majority_class)
+            "major class coverage": get_class_coverage(exp, f.major_class_size, f.majority_class),
+            "fnode": f.frm,
+            "tnode": f.to,
         } for i, f in enumerate(features)])
 
         x_axis_item = "idx"
@@ -159,13 +161,17 @@ def render_tree_explorer(id: int):
         ego_radius = 0
         
         with st.container(horizontal=True, horizontal_alignment="center", vertical_alignment="bottom", gap="medium"):
-            simpl_mode = st.selectbox("Simplification Mode", key=f"simpl_mode_selector_{id}", options=["None", "Feature Types", "Steiner", "Ego"], index=0, help="Choose how to simplify the tree for visualization.")
+            simpl_mode = st.selectbox("Simplification Mode", key=f"simpl_mode_selector_{id}", options=["None", "Feature Types", "Steiner", "Ego", "Ego From"], index=0, help="Choose how to simplify the tree for visualization.")
             
             if simpl_mode == "Steiner":
                 steiner_mode = st.selectbox("Steiner Tree", key=f"steiner_selector_{id}", options=["Minima", "Maxima"], index=0, help="Use Steiner tree to include important critical points in the tree view.")
             if simpl_mode == "Ego":
                 ego_origin = st.selectbox("Ego Origin", key=f"ego_origin_selector_{id}", options=["Minima", "Maxima"], index=0, help="Choose the type of critical point to center the ego tree around.")
                 ego_radius = st.slider("Ego Radius", key=f"ego_radius_slider_{id}", min_value=1, max_value=50, value=2, help="Radius of the ego tree to display.")
+            if simpl_mode == "Ego From":
+                ego_origin = st.text_input("Ego Origin ID", key=f"ego_origin_id_input_{id}", value="0", help="Comma separated list of critical point IDs to center the ego tree around.")
+                ego_origin = tuple(int(x.strip()) for x in ego_origin.split(",") if x.strip().isdigit())
+                ego_radius = int(st.number_input("Ego Radius", key=f"ego_radius_input_{id}", min_value=2, value=2, help="Radius of the ego tree to display."))
             
             # TODO: saddle simplification is killing arcs, need to fix that
             # saddle_simpl = st.toggle(f"Saddle Simplification", key=f"saddle_simpl_toggle_{id}", value=False, help="Remove chains of saddle-saddle connections for a cleaner tree view.")
@@ -188,6 +194,7 @@ def render_tree_explorer(id: int):
                 st.session_state[f"tree_graph_{id}"] = compute_tree_graph(exp, valid_features, steiner_mode, ego_origin, ego_radius, saddle_simpl)
             
             display_tree = st.checkbox("Display Tree Graph", key=f"display_tree_checkbox_{id}", value=False)
+            use_phys = st.checkbox("Use Physics", key=f"use_phys_checkbox_{id}", value=False)
 
         gnx = st.session_state.get(f"tree_graph_{id}", None)
 
@@ -205,6 +212,7 @@ def render_tree_explorer(id: int):
         
         g = net.Network(height="600px", width="100%", directed=True)
         g.from_nx(gnx)
+        g.toggle_physics(use_phys)
         
         html = g.generate_html()
         components.html(html, height=600)

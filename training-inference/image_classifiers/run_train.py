@@ -471,7 +471,7 @@ def validate(model, loader, criterion, device, collect_outputs=False, criterion_
 			else:
 				outputs = model(images)
 				if collect_outputs and extra_metrics:
-					batch_extra = compute_batch_extra_metrics(outputs, labels, extra_metrics, model=model)
+					batch_extra = compute_batch_extra_metrics(outputs, labels, extra_metrics, model=model, images=images)
 				else:
 					batch_extra = {}
 
@@ -527,12 +527,13 @@ EXTRA_METRIC_DIRS  = {
 def _per_sample_gradnorm_vmap(model, criterion, images, labels):
 	"""Per-sample ||∇_θ L_i||_2 via vmap+grad.
 
-	One vectorised forward-backward pass instead of B sequential ones with
-	retain_graph=True, so the full computation graph is never held in memory.
+	Vectorises gradient computation across batch without extra forward passes.
 	Returns (B,) float32 CPU tensor.
 	"""
 	training_state = model.training
-	model.eval()
+	prev_disable_collection = getattr(model, '_disable_activation_collection', False)
+	model.eval()  # Avoid BatchNorm in-place mutations during grad transforms
+	model._disable_activation_collection = True
 
 	try:
 		params = {k: v for k, v in model.named_parameters() if v.requires_grad}
@@ -541,15 +542,24 @@ def _per_sample_gradnorm_vmap(model, criterion, images, labels):
 			out = functional_call(model, params, (x.unsqueeze(0),))
 			return criterion(out, y.unsqueeze(0)).squeeze()
 
+		# vmap over (None, 0, 0) = params constant, images/labels batched
 		per_sample_grads = vmap(func_grad(loss_fn), in_dims=(None, 0, 0))(
 			params, images.detach(), labels,
 		)
-		B = images.shape[0]
-		gnorm_sq = torch.zeros(B, device=images.device)
+		# per_sample_grads: dict of {param_name: (B, *param_shape)}
+
+		# Compute norms: flatten each param's gradients, norm across param dims (not batch dim)
+		gnorm_sq_list = []
 		for g in per_sample_grads.values():
-			gnorm_sq = gnorm_sq + g.detach().reshape(B, -1).norm(dim=1).pow(2)
+			# g is (B, *param_shape); flatten all but first dim, compute norm per batch
+			g_flat = g.detach().flatten(start_dim=1)  # (B, P)
+			gnorm_sq_list.append(g_flat.norm(dim=1).pow(2))
+
+		# Sum norms across all parameters
+		gnorm_sq = torch.stack(gnorm_sq_list, dim=0).sum(dim=0)  # (B,)
 		return gnorm_sq.sqrt().cpu()
 	finally:
+		model._disable_activation_collection = prev_disable_collection
 		model.train(training_state)
 
 
@@ -564,6 +574,7 @@ def compute_batch_extra_metrics(logits, labels, metrics, images_for_grad=None,
 		images_for_grad  : leaf tensor with requires_grad=True (needed for 'gradnorm').
 		criterion_collect: CrossEntropyLoss(reduction='none') (needed for 'gradnorm' / 'gradnorm_importance').
 		model            : nn.Module (needed for 'gradnorm_importance').
+		images           : original image batch (needed for vmap-based 'gradnorm_importance').
 
 	Returns:
 		dict mapping metric name -> CPU float32 tensor of shape (B,).

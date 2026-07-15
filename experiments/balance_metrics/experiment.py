@@ -187,7 +187,7 @@ class LossLandscapeExperiment:
             tag = self.model.split("_")[-1]
             self.model_data = f"resnet_{self.dataset.name}_{tag}"
         else:
-            self.model_data = f"{self.model}_{self.dataset.name}" if not st.session_state.model_eq_dataset else self.dataset.name
+            self.model_data = f"{self.model}_{self.dataset.name}"
         
         self.landscape_dir = landscape_dir
         self.ct_dir = ct_dir

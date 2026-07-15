@@ -63,7 +63,11 @@ def compute_tree_graph(exp: LossLandscapeExperiment, features: list[ct.RichFeatu
         nxg = nxg.subgraph(nxg_undir.nodes).to_directed()
     
     if ego_origin != "None":
-        ego_verts = list(minima_nodes) if ego_origin == "Minima" else list(maxima_nodes)
+        if type(ego_origin) is tuple:
+            ego_verts = [v for v in ego_origin if v in nxg.nodes]
+        else:
+            ego_verts = list(minima_nodes) if ego_origin == "Minima" else list(maxima_nodes)
+        
         full_graph = nx.DiGraph()
         
         for v in ego_verts:

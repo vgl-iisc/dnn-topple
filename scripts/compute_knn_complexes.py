@@ -110,9 +110,9 @@ def process_files(id, data_dir, complexes_dir, root, files, max_k, exact, method
 
         for tensor_file in non_chunk_files:
             tensor_path = os.path.join(root, tensor_file)
-            if tensor_path.endswith('.pt'):
+            if tensor_path.endswith('.pt') and tensor_file.startswith('a'):
                 work.append((tensor_file, save_name_pt, lambda p=tensor_path: torch.load(p, weights_only=True).numpy()))
-            else:
+            elif tensor_path.endswith('.txt'):
                 work.append((tensor_file, save_name_txt, lambda p=tensor_path: np.loadtxt(p)))
 
         for base, chunk_files in chunk_groups.items():

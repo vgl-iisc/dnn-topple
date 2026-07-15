@@ -78,6 +78,69 @@ def render_coverage_map(id: int):
     f2c, acc, c2f, cc, datex = st.tabs(["Feature to Class", "Accuracy", "Class to Features", "Class Co-Occurrences", "Data Explorer"])
     selected_features = [features[fid] for fid in selection]
     node2feat = st.session_state.get(f"node2feat_{id}") or []
+
+    @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, BertExperiment: BertExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x)) if x and isinstance(x[0], ct.RichFeature) else hash(tuple(x))})
+    def build_data_explorer_exports(exp: LossLandscapeExperiment, all_features: list[ct.RichFeature], simpl_value: float) -> tuple[pd.DataFrame, pd.DataFrame]:
+        max_pers = max((f.pers for f in all_features), default=1.0)
+        max_pers = max(max_pers, 1e-12)
+
+        feature_rows = []
+        mapping_rows = []
+
+        for f in all_features:
+            maj_class_idx = int(f.majority_class)
+            maj_class_name = exp.dataset.classes[maj_class_idx] if 0 <= maj_class_idx < len(exp.dataset.classes) else str(maj_class_idx)
+            loss_end = f.fn_to if f.pers > max_pers / 50 else f.fn_frm + max_pers / 50
+
+            feature_rows.append({
+                "Simplification Threshold": simpl_value,
+                "Feature ID": f.id,
+                "Loss Start": f.fn_frm,
+                "Loss End": loss_end,
+                "Feature Type": get_type_string(f),
+                "Persistence": f.pers,
+                "Volume": f.size,
+                "Homogeneity": f.homogeneity,
+                "Majority Class": maj_class_name,
+                "Major Class Size": f.major_class_size,
+                "Majority Class Coverage": get_class_coverage(exp, f.major_class_size, maj_class_idx),
+            })
+
+            for member_idx in f.members:
+                mapping_rows.append({
+                    "Simplification Threshold": simpl_value,
+                    "Data Index": member_idx,
+                    "Feature ID": f.id,
+                })
+
+        feature_df = pd.DataFrame(feature_rows).sort_values(by=["Feature ID"]).reset_index(drop=True)
+        mapping_df = pd.DataFrame(mapping_rows).sort_values(by=["Data Index", "Feature ID"]).reset_index(drop=True)
+        return feature_df, mapping_df
+
+    def render_data_explorer_exports():
+        simpl_value = float(st.session_state.get(f"computed_simpl_{id}", 0.0))
+        feature_df, mapping_df = build_data_explorer_exports(exp, features, simpl_value)
+        simpl_tag = f"{simpl_value:.8g}".replace(".", "p").replace("-", "m")
+
+        with st.expander("Export all features and point mappings", expanded=False):
+            st.caption(f"Exports include all features at simplification={simpl_value:g}.")
+            lcol, rcol = st.columns(2)
+            with lcol:
+                st.download_button(
+                    "Download feature attributes CSV",
+                    data=feature_df.to_csv(index=False).encode("utf-8"),
+                    file_name=f"all_features_simpl_{simpl_tag}.csv",
+                    mime="text/csv",
+                    key=f"download_all_features_csv_{id}",
+                )
+            with rcol:
+                st.download_button(
+                    "Download data-point to feature mapping CSV",
+                    data=mapping_df.to_csv(index=False).encode("utf-8"),
+                    file_name=f"point_feature_mapping_simpl_{simpl_tag}.csv",
+                    mime="text/csv",
+                    key=f"download_point_feature_mapping_csv_{id}",
+                )
    
     @st.fragment
     def f2c_viewer():
@@ -376,6 +439,8 @@ def render_coverage_map(id: int):
 
     @st.fragment
     def datex_viewer():
+        render_data_explorer_exports()
+
         node2label = exp.dataset.labels_by_split[exp.split]
         
         @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, BertExperiment: BertExperiment.__hash__})
@@ -524,6 +589,8 @@ def render_coverage_map(id: int):
     @st.fragment
     def bert_datex_viewer():
         """Token-level data explorer for BERT NER experiments."""
+        render_data_explorer_exports()
+
         node2label = exp.dataset.labels_by_split[exp.split]
         labels_arr = np.array(get_labels(exp))
         preds_arr  = np.array(get_preds(exp))

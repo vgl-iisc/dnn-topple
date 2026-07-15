@@ -1,0 +1,1 @@
+python scripts/compute_contour_trees.py /home/santripta/data_2/tvcg_multifield_infer/cifar /home/santripta/data_2/tvcg_multifield_knn/ /home/santripta/data_2/tvcg_multifield_strees_loss/ s Losses

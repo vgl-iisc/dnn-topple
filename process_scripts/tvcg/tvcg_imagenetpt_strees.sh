@@ -1,0 +1,1 @@
+python scripts/compute_contour_trees.py /home/santripta/data_2/imagenetpt_smallinf/landscape_data /home/santripta/data_2/imagenetpt_smallinf/knns /home/santripta/data_2/imagenetpt_smallinf/strees/ s Losses

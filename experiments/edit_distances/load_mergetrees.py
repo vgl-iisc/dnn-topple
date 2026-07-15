@@ -106,24 +106,30 @@ def pyct_to_mergetree_nx(tree_path: str, simpl: float = 0.0) -> nx.Graph:
     """
     topo = ct.TopologicalFeatures()
     topo.loadData(tree_path)
-    features = topo.getArcFeatures(-1, simpl)
+    data = topo.ctdata
+    features, _ = topo.getArcFeatures(-1, simpl)
 
     # Collect unique nodes: original pyct ID -> (scalar, type)
     node_data: dict[int, tuple[float, int]] = {}
     for f in features:
-        node_data[f.frm] = (float(f.fn_frm), int(f.type_frm))
-        node_data[f.to]  = (float(f.fn_to),  int(f.type_to))
+        frm_corrected = data.nodeMap[f.frm]
+        to_corrected = data.nodeMap[f.to]
+
+        fn_frm = data.fnVals[frm_corrected]
+        fn_to = data.fnVals[to_corrected]
+
+        node_data[f.frm] = float(fn_frm)
+        node_data[f.to]  = float(fn_to)
 
     # Remap to contiguous 0-indexed integers required by the edit-distance code
     orig_ids = sorted(node_data.keys())
     id_map   = {orig: new for new, orig in enumerate(orig_ids)}
 
     g = nx.Graph()
-    for orig_id, (scalar, ntype) in node_data.items():
+    for orig_id, scalar in node_data.items():
         g.add_node(
             id_map[orig_id],
             scalar=scalar,
-            type=ntype,
             birth=0.0,
             death=0.0,
             position=(0.0, 0.0, 0.0),
@@ -134,8 +140,6 @@ def pyct_to_mergetree_nx(tree_path: str, simpl: float = 0.0) -> nx.Graph:
         v = id_map[f.to]
         g.add_edge(
             u, v,
-            persistence=float(f.pers),
-            regionSize=int(getattr(f, 'size', 0)),
         )
 
     return g

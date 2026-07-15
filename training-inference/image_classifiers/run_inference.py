@@ -252,6 +252,8 @@ def attach_collection_hooks(model, collection, collected_input_activations):
 		logger.info(f"Attaching hook to {path} with tag {tag}: found {mod.__class__.__name__}")
   
 		def hook_fn(m, i, o, tag=tag):
+			if getattr(model, '_disable_activation_collection', False):
+				return
 			collected_input_activations[tag].append(i[0].detach().cpu())
      
 		hooks.append(mod.register_forward_hook(hook_fn))

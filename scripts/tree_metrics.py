@@ -1,8 +1,36 @@
 import networkx as nx
 import numpy as np
 
+
+def _orient_for_rooted_metrics(tree: nx.DiGraph) -> nx.DiGraph:
+	"""Return a root->leaves orientation suitable for rooted-tree metrics.
+
+	Some pipelines emit split trees and join trees with opposite edge directions.
+	This helper chooses between the graph and its reverse based on rootedness:
+	prefer the orientation with exactly one source (in-degree 0).
+	"""
+
+	def source_count(g: nx.DiGraph) -> int:
+		return sum(1 for n in g.nodes if g.in_degree(n) == 0)
+
+	original_sources = source_count(tree)
+	if original_sources == 1:
+		return tree
+
+	rev = tree.reverse(copy=True)
+	reversed_sources = source_count(rev)
+	if reversed_sources == 1:
+		return rev
+
+	# Fallback for malformed/non-tree inputs: choose the orientation with fewer
+	# candidate roots so downstream metrics remain stable.
+	if reversed_sources < original_sources:
+		return rev
+
+	return tree
+
 def average_branching_factor(tree: nx.DiGraph) -> float:
-	"""Compute the average branching factor of a (reversed) tree.
+	"""Compute the average branching factor of a rooted tree.
 
 	The average branching factor is defined as the average number of children
 	per internal node (nodes with at least one child).
@@ -14,16 +42,18 @@ def average_branching_factor(tree: nx.DiGraph) -> float:
 		float: The average branching factor of the tree. Returns 0.0 if there
 			   are no internal nodes.
 	"""
-	internal_nodes = [n for n in tree.nodes if tree.in_degree(n) > 0]
+	oriented = _orient_for_rooted_metrics(tree)
+
+	internal_nodes = [n for n in oriented.nodes if oriented.out_degree(n) > 0]
 	if len(internal_nodes) == 0:
 		return 0.0
 
-	total_children = sum(tree.in_degree(n) for n in internal_nodes)
+	total_children = sum(oriented.out_degree(n) for n in internal_nodes)
 	avg_branching_factor = total_children / len(internal_nodes)
 	return avg_branching_factor
 
 def colless_index(tree: nx.DiGraph) -> tuple[float, float, int, int]:
-	"""Compute the Colless index of a rooted (reversed) binary tree. Augmented for contour trees.
+	"""Compute the Colless index of a rooted binary tree. Augmented for contour trees.
 
 	The Colless index is a measure of tree imbalance. It is defined as the sum
 	of the absolute differences in sizes of the left and right subtrees for all
@@ -39,26 +69,26 @@ def colless_index(tree: nx.DiGraph) -> tuple[float, float, int, int]:
 	colless_nodes = 0
 	missing = 0
 
-	rev = tree.reverse()
+	oriented = _orient_for_rooted_metrics(tree)
 
-	for n in rev.nodes:
-		if rev.out_degree(n) == 2:  # Internal node with two children
-			left_child, right_child = list(rev.successors(n))[:2]
+	for n in oriented.nodes:
+		if oriented.out_degree(n) == 2:  # Internal node with two children
+			left_child, right_child = list(oriented.successors(n))[:2]
    
-			left_tree = nx.algorithms.traversal.dfs_tree(rev, left_child)
-			right_tree = nx.algorithms.traversal.dfs_tree(rev, right_child)
+			left_tree = nx.algorithms.traversal.dfs_tree(oriented, left_child)
+			right_tree = nx.algorithms.traversal.dfs_tree(oriented, right_child)
    
 			left_size = 0
 			for edge in left_tree.edges:
-				left_size += rev.get_edge_data(*edge)["volume"]
+				left_size += oriented.get_edge_data(*edge)["volume"]
     
 			right_size = 0
 			for edge in right_tree.edges:
-				right_size += rev.get_edge_data(*edge)["volume"]
+				right_size += oriented.get_edge_data(*edge)["volume"]
 
 			colless_sum += abs(left_size - right_size)
 			colless_nodes += 1
-		elif rev.out_degree(n) > 0:
+		elif oriented.out_degree(n) > 0:
 			missing += 1
 
 	average_colless_sum = colless_sum / colless_nodes if colless_nodes > 0 else np.nan
@@ -66,7 +96,7 @@ def colless_index(tree: nx.DiGraph) -> tuple[float, float, int, int]:
 	return colless_sum, average_colless_sum, colless_nodes, missing
 
 def sackin_index(tree: nx.DiGraph) -> tuple[float, float, int]:
-	"""Compute Sackin's index of a rooted (reversed) tree. Augmented for contour trees.
+	"""Compute Sackin's index of a rooted tree. Augmented for contour trees.
 
 	Sackin's index is defined as the sum of the depths of all leaves in the tree.
 
@@ -79,19 +109,19 @@ def sackin_index(tree: nx.DiGraph) -> tuple[float, float, int]:
 		int: Number of leaves in the tree.
 	"""
 	
-	rev = tree.reverse()
-	root = list(nx.topological_sort(rev))[0]
+	oriented = _orient_for_rooted_metrics(tree)
+	root = list(nx.topological_sort(oriented))[0]
  
-	leaves = [n for n in rev.nodes if rev.out_degree(n) == 0]
+	leaves = [n for n in oriented.nodes if oriented.out_degree(n) == 0]
 	sackin_sum = 0.0
  
-	paths = nx.single_source_shortest_path(rev, root)
+	paths = nx.single_source_shortest_path(oriented, root)
 
 	for leaf in leaves:
 		path = paths[leaf]
 
 		for i in range(len(path) - 1):
-			edge_data = rev.get_edge_data(path[i], path[i + 1])
+			edge_data = oriented.get_edge_data(path[i], path[i + 1])
 			sackin_sum += edge_data["volume"]
 
 	return sackin_sum, sackin_sum / len(leaves) if len(leaves) > 0 else np.nan, len(leaves)

@@ -1,0 +1,6 @@
+# python scripts/compute_contour_trees.py /home/santripta/data_2/tvcg_multifield_infer/ /home/santripta/data_2/tvcg_multifield_knn/ /home/santripta/data_2/tvcg_multifield_strees_loss/ s Losses
+# python scripts/compute_contour_trees.py /home/santripta/data_2/tvcg_multifield_infer/ /home/santripta/data_2/tvcg_multifield_knn/ /home/santripta/data_2/tvcg_multifield_strees_gradnorm/ s GradNorm
+# python scripts/compute_contour_trees.py /home/santripta/data_2/tvcg_multifield_infer/ /home/santripta/data_2/tvcg_multifield_knn/ /home/santripta/data_2/tvcg_multifield_strees_entropy/ s Entropy
+# python scripts/compute_contour_trees.py /home/santripta/data_2/tvcg_multifield_infer/ /home/santripta/data_2/tvcg_multifield_knn/ /home/santripta/data_2/tvcg_multifield_strees_margin/ s Margin
+# python scripts/compute_contour_trees.py /home/santripta/data_2/tvcg_multifield_infer/ /home/santripta/data_2/tvcg_multifield_knn/ /home/santripta/data_2/tvcg_multifield_strees_gradimp/ s GradImp
+python scripts/compute_contour_trees.py /home/santripta/data_2/tvcg_multifield_infer/ /home/santripta/data_2/tvcg_multifield_knn/ /home/santripta/data_2/tvcg_multifield_strees_l2/ s L2

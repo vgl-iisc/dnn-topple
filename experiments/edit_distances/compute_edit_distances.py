@@ -41,7 +41,7 @@ _EDIST_ROOT = os.path.join(_REPO_ROOT, 'deps', 'edit-dists')
 sys.path.insert(0, _REPO_ROOT)
 sys.path.insert(0, _EDIST_ROOT)
 
-from experiments.edit_distances.load_mergetrees import load_mergetree_dir, find_root, parse_stem
+from load_mergetrees import load_mergetree_dir, find_root, parse_stem
 from mergetree.mergetree import computeBranchDecomposition
 from mted.baseMetrics import cost_wasserstein_branch_squared
 from mted.branch_mapping_dist import branchMappingDistance

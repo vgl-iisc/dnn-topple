@@ -1,0 +1,1 @@
+python scripts/compute_knn_complexes.py /home/santripta/data_2/imagenetpt_smallinf/landscape_data /home/santripta/data_2/imagenetpt_smallinf/knns 20 k --metric e --timing_output knn_times_imagenet_pt.pkl

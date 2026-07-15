@@ -1,0 +1,1 @@
+python training-inference/image_classifiers/run_train.py --config training-inference/image_classifiers/runs_tvcg/multifield/resnet_cifar.yaml -o tvcg-multifield-resnet-cifar.log

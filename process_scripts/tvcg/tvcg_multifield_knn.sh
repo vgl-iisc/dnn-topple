@@ -1,0 +1,1 @@
+python scripts/compute_knn_complexes.py /home/santripta/data_2/tvcg_multifield_infer/ /home/santripta/data_2/tvcg_multifield_knn/ 20 k --metric e --timing_output knn_times_tvcg_multifield.pkl

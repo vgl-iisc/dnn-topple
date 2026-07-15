@@ -1,0 +1,1 @@
+python training-inference/imagenet/run_train_inference.py --config training-inference/imagenet/runs/resnet50pt.yaml -o tvcg-resnet50pt.log
