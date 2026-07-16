@@ -1,6 +1,6 @@
 from experiment import LossLandscapeExperiment, BertExperiment
 from coverage_utils import get_class_coverage
-from graph_utils import compute_tree_graph
+from graph_utils import compute_tree_graph, compute_homogeneous_subcomponents
 from feature import get_type_string
 
 import pyct as ct
@@ -92,7 +92,8 @@ def render_tree_explorer(id: int):
             y2=alt.Y2('fend'+":Q", title="Loss End"),
             tooltip=[alt.Tooltip('id', title="Feature ID"), alt.Tooltip('fstart', title="Loss Start"), alt.Tooltip('fend', title="Loss End"), 
                      alt.Tooltip('ftype', title="Feature Type"), alt.Tooltip('pers', title="Persistence"), alt.Tooltip('volume', title="Volume"), alt.Tooltip('homogeneity', title="Homogeneity"),
-                     alt.Tooltip('majority class', title="Majority Class"), alt.Tooltip('major class size', title="Major Class Size"), alt.Tooltip('major class coverage', title="Majority Class Coverage")],
+                     alt.Tooltip('majority class', title="Majority Class"), alt.Tooltip('major class size', title="Major Class Size"), alt.Tooltip('major class coverage', title="Majority Class Coverage"),
+                     alt.Tooltip('fnode', title="From Node"), alt.Tooltip('tnode', title="To Node")],
             opacity=alt.condition(brush, alt.value(1), alt.value(0.2)),
             color=alt.Color('logvol', scale=alt.Scale(scheme='yelloworangered')).title(None).legend(None),
             strokeWidth=alt.value(5)
@@ -159,9 +160,14 @@ def render_tree_explorer(id: int):
         steiner_mode = "None"
         ego_origin = "None"
         ego_radius = 0
+        hs_classes: list[str] = []
+        hs_homo_thresh = 1.0
+        hs_min_size = 1
+        hs_min_vol = 5
+        hs_ego_radius = 2
         
         with st.container(horizontal=True, horizontal_alignment="center", vertical_alignment="bottom", gap="medium"):
-            simpl_mode = st.selectbox("Simplification Mode", key=f"simpl_mode_selector_{id}", options=["None", "Feature Types", "Steiner", "Ego", "Ego From"], index=0, help="Choose how to simplify the tree for visualization.")
+            simpl_mode = st.selectbox("Simplification Mode", key=f"simpl_mode_selector_{id}", options=["None", "Feature Types", "Steiner", "Ego", "Ego From", "Homogeneous Subcomponents"], index=0, help="Choose how to simplify the tree for visualization.")
             
             if simpl_mode == "Steiner":
                 steiner_mode = st.selectbox("Steiner Tree", key=f"steiner_selector_{id}", options=["Minima", "Maxima"], index=0, help="Use Steiner tree to include important critical points in the tree view.")
@@ -172,6 +178,12 @@ def render_tree_explorer(id: int):
                 ego_origin = st.text_input("Ego Origin ID", key=f"ego_origin_id_input_{id}", value="0", help="Comma separated list of critical point IDs to center the ego tree around.")
                 ego_origin = tuple(int(x.strip()) for x in ego_origin.split(",") if x.strip().isdigit())
                 ego_radius = int(st.number_input("Ego Radius", key=f"ego_radius_input_{id}", min_value=2, value=2, help="Radius of the ego tree to display."))
+            if simpl_mode == "Homogeneous Subcomponents":
+                hs_classes = st.multiselect("Classes", options=exp.dataset.classes, default=[], key=f"hs_classes_{id}", help="Only show subcomponents whose majority class is one of these.")
+                hs_homo_thresh = st.slider("Homogeneity Threshold", min_value=0.0, max_value=1.0, value=0.8, step=0.01, key=f"hs_homo_thresh_{id}", help="Minimum homogeneity for a subcomponent to be included.")
+                hs_min_size = int(st.number_input("Min Size (nodes)", min_value=1, value=1, step=1, key=f"hs_min_size_{id}", help="Minimum number of nodes in a subcomponent."))
+                hs_min_vol = int(st.number_input("Min Volume", min_value=1, value=5, step=1, key=f"hs_min_vol_{id}", help="Minimum total volume of a subcomponent."))
+                hs_ego_radius = int(st.number_input("Ego Radius", min_value=1, value=2, step=1, key=f"hs_ego_radius_{id}", help="Radius of the ego subtree shown around each subcomponent top."))
             
             # TODO: saddle simplification is killing arcs, need to fix that
             # saddle_simpl = st.toggle(f"Saddle Simplification", key=f"saddle_simpl_toggle_{id}", value=False, help="Remove chains of saddle-saddle connections for a cleaner tree view.")
@@ -206,6 +218,28 @@ def render_tree_explorer(id: int):
             st.text(f"Tree graph computed with {len(gnx.nodes)} nodes and {len(gnx.edges)} edges. Connected: {nx.is_connected(gnx.to_undirected())}. Not displayed.")
             return
 
+        if simpl_mode == "Homogeneous Subcomponents":
+            subcomps = compute_homogeneous_subcomponents(gnx, hs_homo_thresh, hs_min_size, hs_min_vol)
+            st.session_state[f"homo_subcomps_{id}"] = subcomps
+
+            if not hs_classes:
+                st.warning("Select at least one class to display.")
+                return
+
+            filtered = [sets for top, sets in subcomps.items() if sets["majority"] in hs_classes]
+            
+            if not filtered:
+                st.warning("No homogeneous subcomponents found matching the given criteria.")
+                return
+            combined = nx.DiGraph()
+            
+            nodes = set().union(*(sets["set"] for sets in filtered))
+
+            for n in nodes:
+                ego = nx.ego_graph(gnx, n, radius=hs_ego_radius, undirected=True)
+                combined = nx.compose(combined, ego)
+            gnx = combined
+
         st.text(f"{len(valid_features)} features selected. Rendering {len(gnx.edges)} features after processing. Connected: {nx.is_connected(gnx.to_undirected())}")
 
         # imbalance_metrics = compute_tree_imbalance_metrics(gnx)
@@ -216,7 +250,6 @@ def render_tree_explorer(id: int):
         
         html = g.generate_html()
         components.html(html, height=600)
-        # st.write(imbalance_metrics)
         
     features: list[ct.RichFeature] | None = st.session_state.get(f"feats_{id}", None)
 

@@ -75,7 +75,7 @@ def render_coverage_map(id: int):
         selection = focused_feat_ids
     selection = list(set(selection))
 
-    f2c, acc, c2f, cc, datex = st.tabs(["Feature to Class", "Accuracy", "Class to Features", "Class Co-Occurrences", "Data Explorer"])
+    f2c, acc, c2f, cc, datex, subcomp_stats = st.tabs(["Feature to Class", "Accuracy", "Class to Features", "Class Co-Occurrences", "Data Explorer", "Homogeneous Subcomponents"])
     selected_features = [features[fid] for fid in selection]
     node2feat = st.session_state.get(f"node2feat_{id}") or []
 
@@ -578,7 +578,7 @@ def render_coverage_map(id: int):
             if show:
                 viewer_func()
             else:
-                st.info(f"{name} view is hidden")    
+                st.info(f"{name} view is hidden")
 
     show_utility(f2c, f2c_viewer, "Feature to Class")
     show_utility(acc, acc_viewer, "Accuracy")
@@ -699,3 +699,156 @@ def render_coverage_map(id: int):
         show_utility(datex, bert_datex_viewer, "Data Explorer")
     else:
         show_utility(datex, datex_viewer, "Data Explorer")
+
+    def subcomponent_stats():
+        subcomps = st.session_state.get(f"homo_subcomps_{id}", None)
+
+        if subcomps is None:
+            st.info("Compute homogeneous subcomponents to begin.")
+            return
+        
+        subcomps_by_class = {c: [s for s in subcomps.values() if s["majority"] == c] for c in exp.dataset.classes}
+
+        counts_class, distances, size_class = st.tabs(["Class Counts", "Distances", "Coverage"])
+
+        with counts_class:
+            class_counts = {c: len(subcomps_by_class[c]) for c in subcomps_by_class}
+            represented = {c: sum(s["majority_count"] for s in subcomps_by_class[c]) for c in subcomps_by_class}
+            represented_cov = {c: represented[c] / exp.dataset.class_size_by_split[exp.split][c] if class_counts[c] > 0 else 0 for c in subcomps_by_class}
+
+            df_counts = pd.DataFrame({
+                "Class": list(class_counts.keys()),
+                "Count": list(class_counts.values())
+            })
+            chart = alt.Chart(df_counts).mark_bar().encode(
+                x="Class",
+                y="Count"
+            )
+            st.altair_chart(chart, use_container_width=True)
+
+            df_counts = pd.DataFrame({
+                "Class": list(represented.keys()),
+                "Counts": list(represented.values()),
+                "Coverage": list(represented_cov.values())
+            })
+
+            if st.selectbox("View", options=["Count", "Coverage"], key=f"subcomp_count_view_{id}") == "Coverage":
+                chart_cov = alt.Chart(df_counts).mark_bar().encode(
+                    x="Class",
+                    y=alt.Y("Coverage", axis=alt.Axis(format='%'))
+                )
+                st.altair_chart(chart_cov, use_container_width=True)
+            else:
+                chart_count = alt.Chart(df_counts).mark_bar().encode(
+                    x="Class",
+                    y="Counts"
+                )
+                st.altair_chart(chart_count, use_container_width=True)
+
+        with distances:
+            with st.container(horizontal=True, vertical_alignment="center"):
+                distance_metric = st.selectbox("Distance Type", options=["Path", "Volume Weighted"])
+                use_weight = distance_metric == "Volume Weighted"
+                if st.button("Compute Distances", key=f"compute_distances_{id}"):
+                    raw_mat_min = np.zeros((len(exp.dataset.classes), len(exp.dataset.classes)), dtype=np.float32)
+                    raw_mat_avg = np.zeros((len(exp.dataset.classes), len(exp.dataset.classes)), dtype=np.float32)
+                    raw_mat_max = np.zeros((len(exp.dataset.classes), len(exp.dataset.classes)), dtype=np.float32)
+                    raw_mat_big = np.zeros((len(exp.dataset.classes), len(exp.dataset.classes)), dtype=np.float32)
+
+                    largest_subcomp_sizes = {c: max([len(s["set"]) for s in subcomps_by_class[c]]) if len(subcomps_by_class[c]) > 0 else 0 for c in subcomps_by_class}
+
+                    G = st.session_state.get(f"tree_graph_{id}", None)
+                    G = nx.to_undirected(G) # should exist
+
+                    for i, c1 in enumerate(exp.dataset.classes):
+                        dists_to = [[] for c2 in exp.dataset.classes[i+1:]]
+                        
+                        for s in subcomps_by_class[c1]:
+                            src = s["top"]
+                            paths = nx.shortest_path(G, source=src, weight="volume" if use_weight else None)
+
+                            for j, c2 in enumerate(exp.dataset.classes[i+1:]):
+                                if c1 == c2:
+                                    continue
+                                for s2 in subcomps_by_class[c2]:
+                                    tgt = s2["top"]
+                                    if tgt in paths:
+                                        length = len(paths[tgt]) - 1 if not use_weight else sum(G[u][v]["volume"] for u, v in zip(paths[tgt][:-1], paths[tgt][1:]))
+                                        
+                                        dists_to[j].append(length)
+
+                                        if len(s2["set"]) == largest_subcomp_sizes[c2] and len(s["set"]) == largest_subcomp_sizes[c1]:
+                                            raw_mat_big[i, j+i+1] = length
+
+                        raw_mat_min[i, i] = 0
+                        raw_mat_min[i, i+1:] = [min(d) if len(d) > 0 else 0 for d in dists_to]
+                        raw_mat_avg[i, i+1:] = [sum(d) / len(d) if len(d) > 0 else 0 for d in dists_to]
+                        raw_mat_max[i, i+1:] = [max(d) if len(d) > 0 else 0 for d in dists_to]
+
+                    raw_mat_min = raw_mat_min + raw_mat_min.T
+                    raw_mat_avg = raw_mat_avg + raw_mat_avg.T
+                    raw_mat_max = raw_mat_max + raw_mat_max.T
+                    raw_mat_big = raw_mat_big + raw_mat_big.T
+
+                    st.session_state[f"subcomp_distance_min_{id}"] = raw_mat_min
+                    st.session_state[f"subcomp_distance_avg_{id}"] = raw_mat_avg
+                    st.session_state[f"subcomp_distance_max_{id}"] = raw_mat_max
+                    st.session_state[f"subcomp_distance_big_{id}"] = raw_mat_big
+
+            raw_mat_min = st.session_state.get(f"subcomp_distance_min_{id}", None)
+            raw_mat_avg = st.session_state.get(f"subcomp_distance_avg_{id}", None)
+            raw_mat_max = st.session_state.get(f"subcomp_distance_max_{id}", None)
+            raw_mat_big = st.session_state.get(f"subcomp_distance_big_{id}", None)
+
+            if raw_mat_min is None or raw_mat_avg is None or raw_mat_max is None or raw_mat_big is None:
+                st.info("Compute distances to view.")
+                return
+
+            df_min = pd.DataFrame(raw_mat_min, index=exp.dataset.classes, columns=exp.dataset.classes)
+            df_avg = pd.DataFrame(raw_mat_avg, index=exp.dataset.classes, columns=exp.dataset.classes)
+            df_max = pd.DataFrame(raw_mat_max, index=exp.dataset.classes, columns=exp.dataset.classes)
+            df_big = pd.DataFrame(raw_mat_big, index=exp.dataset.classes, columns=exp.dataset.classes)
+
+            option = st.selectbox("Distance Metric", options=["Minimum", "Average", "Maximum", "Largest-Largest"], key=f"subcomp_distance_metric_{id}")
+            choice = {"Minimum": df_min, "Average": df_avg, "Maximum": df_max, "Largest-Largest": df_big}[option]
+            
+            chart = alt.Chart(choice.reset_index().melt(id_vars='index')).mark_rect().encode(
+                x=alt.X('variable:N', title="Class"),
+                y=alt.Y('index:N', title="Class"),
+                color=alt.Color('value:Q', scale=alt.Scale(scheme='blues', type="symlog"), title="Distance"),
+                tooltip=[alt.Tooltip('value:Q', title="Distance"), alt.Tooltip('index:N', title="Class 1"), alt.Tooltip('variable:N', title="Class 2")]
+            ).properties(
+                width=400,
+                height=400
+            )
+
+            st.altair_chart(chart, use_container_width=True, key=f"subcomp_distance_heatmap_{id}")
+
+        with size_class:
+            cls = st.selectbox("Class", options=exp.dataset.classes, key=f"subcomp_size_class_{id}")
+            tops = [s["top"] for s in subcomps_by_class[cls]]
+            volumes = [s["volume"] for s in subcomps_by_class[cls]]
+            coverages = [s["volume"] / exp.dataset.class_size_by_split[exp.split][cls] for s in subcomps_by_class[cls]]
+            df = pd.DataFrame({
+                "Size": [len(s["set"]) for s in subcomps_by_class[cls]],
+                "Volume": volumes,
+                "Coverage": coverages,
+                "Top Node": tops
+            })
+            with st.container(horizontal=True, vertical_alignment="center"):
+                if len(volumes) == 0:
+                    st.info(f"No subcomponents for class {cls}.")
+                    return
+                st.write(f"Subcomps for {cls}: {len(volumes)}")
+                st.write(f"Average volume: {np.mean(volumes):0.3f}")
+                st.write(f"Average coverage: {np.mean(coverages):0.3%}")
+                st.write(f"Minimum volume: {np.min(volumes):0.3f}")
+                st.write(f"Maximum volume: {np.max(volumes):0.3f}")
+                st.write(f"Minimum coverage: {np.min(coverages):0.3%}")
+                st.write(f"Maximum coverage: {np.max(coverages):0.3%}")
+                st.write(f"Total coverage: {sum(volumes) / exp.dataset.class_size_by_split[exp.split][cls]:0.3%}")
+            st.dataframe(df, width="content", key=f"subcomp_size_table_{id}", hide_index=True)
+
+
+
+    show_utility(subcomp_stats, subcomponent_stats, "Homogeneous Subcomponents")

@@ -18,6 +18,84 @@ def rooted_tree_from_exp(exp: LossLandscapeExperiment, simpl: float, data_dir: s
     
     return nxg
 
+def compute_homogeneous_subcomponents(nxg: nx.DiGraph, homogeneity_thresh: float=1.0, min_size: int=1, min_vol: int=5):
+    minima = [v for v, d in nxg.nodes(data=True) if d["cp_type"] == ct.MINIMUM]
+    minima.sort(key=lambda v: nxg.nodes[v]["fn_val"])
+
+    sets = {v: None for v in nxg.nodes()}
+
+    def make_new_set(v):
+        return {"homogeneity": 1.0, "volume": 1, "set": {v}, "majority": nxg.nodes[v]["label"], "majority_count": 1, "top": v}
+    
+    def merge_sets(v1, v2):
+        assert sets[v1] is not None and sets[v2] is not None
+        assert sets[v1]["majority"] == sets[v2]["majority"]
+
+        v1 = sets[v1]["top"]
+        v2 = sets[v2]["top"]
+
+        if v1 == v2:
+            return
+
+        sets[v2]["set"].update(sets[v1]["set"])
+        sets[v2]["volume"] += sets[v1]["volume"]
+        sets[v2]["majority_count"] += sets[v1]["majority_count"] 
+        sets[v2]["homogeneity"] = sets[v2]["majority_count"] / sets[v2]["volume"]
+        
+        for v in sets[v1]["set"]:
+            sets[v] = sets[v2]
+
+    stack = minima.copy()
+    while stack:
+        v = stack.pop()
+
+        if sets[v] is None:
+            sets[v] = make_new_set(v)
+
+        for u in nxg.successors(v):
+
+            if sets[u] is not None and sets[u] is sets[v]:
+                continue
+
+            # u_label = sets[u]["majority"] if sets[u] is not None else nxg.nodes[u]["label"]
+            # if u_label != sets[v]["majority"]:
+            #     continue
+
+            if nxg.edges[v,u]["volume"] > 0 and (nxg.edges[v, u]["majority"] != sets[v]["majority"] or nxg.edges[v, u]["major_share"] < homogeneity_thresh):
+                continue
+
+            sets[v]["volume"] += nxg.edges[v, u]["volume"] + 1
+            sets[v]["majority_count"] += nxg.edges[v, u]["major_size"] + 1
+
+            if sets[u] is None:
+                sets[v]["set"].add(u)
+                sets[v]["homogeneity"] = sets[v]["majority_count"] / sets[v]["volume"]
+                sets[v]["top"] = u
+                sets[u] = sets[v]
+
+                stack.append(u)
+            elif sets[u]["majority"] == sets[v]["majority"]:
+                merge_sets(v, u)
+
+    subcomponents = {}
+    seen_components = set()
+    for v in nxg.nodes():
+        if sets[v] is None:
+            continue
+        component = sets[v]
+        if component["volume"] < min_vol or component["homogeneity"] < homogeneity_thresh or len(component["set"]) < min_size:
+            continue
+
+        component_id = id(component)
+        if component_id in seen_components:
+            continue
+
+        seen_components.add(component_id)
+        subcomponents[component["top"]] = component
+
+    return subcomponents
+
+
 @st.cache_data(hash_funcs={LossLandscapeExperiment: LossLandscapeExperiment.__hash__, BertExperiment: BertExperiment.__hash__, list: lambda x: hash(tuple(f.id for f in x))})
 def compute_tree_graph(exp: LossLandscapeExperiment, features: list[ct.RichFeature], steiner_mode: str, ego_origin: str, ego_radius: int, simplify_saddles: bool = False):
     useful_nodes = set()
@@ -55,6 +133,8 @@ def compute_tree_graph(exp: LossLandscapeExperiment, features: list[ct.RichFeatu
         persistence=float(f.pers),
         volume=int(f.size),
         majority=class_label,
+        major_size=int(f.major_class_size),
+        major_share=float(majority_share)
         )
 
     if steiner_mode != "None":
