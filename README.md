@@ -1,7 +1,11 @@
-## Temporary README
+## Reproduction artifacts & source for "Topological Analysis of DNNs via Loss-Augmented Latent Spaces"
 
-Created/tested with python 3.13.
+#### Environment
+Created/tested with python 3.13. For installing dependencies:
+```
+$ git submodule update --init --recursive
+$ pip install -r requirements.txt
+$ pip install deps/contour-tree
+``` 
 
-Ensure running `pip install -r requirements.txt` from basedir.
-
-All scripts written to be executed from basedir
+All scripts written to be executed from repo base.
