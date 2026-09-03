@@ -5,3 +5,6 @@
 [submodule "deps/edit-dists"]
 	path = deps/edit-dists
 	url = https://github.com/scivislab/BDI-ED
+[submodule "deps/treevis"]
+	path = deps/treevis
+	url = https://github.com/vgl-iisc/ctree-orrery-vis.git

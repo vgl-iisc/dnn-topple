@@ -1,0 +1,1 @@
+streamlit run vis/app.py /media/santripta/data2/tvcg_multifield_strees_${1}_vol/ /media/santripta/data2/tvcg_multifield_infer/ ./datasets/

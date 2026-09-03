@@ -1,0 +1,1 @@
+python scripts/compute_contour_trees.py /home/santripta/data_1/Inference_better/landscape_data_cross_epoch_re /home/santripta/data_1/Inference_better/knns_cross_epoch_re /home/santripta/data_1/Inference_better/strees_cross_epoch_re s Losses

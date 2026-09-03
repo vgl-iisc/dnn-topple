@@ -1,0 +1,1 @@
+streamlit run vis/app.py /home/santripta/data_r/strees_random_mnist/ /home/santripta/data_r/landscape_random_mnist/ ./datasets/

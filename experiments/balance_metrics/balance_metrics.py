@@ -180,6 +180,8 @@ def plot_layer_metrics(csv_path: str, out_dir: str, layer_order: dict, ignore_pe
 def compute_correlations(data: pd.DataFrame, out_csv: str | None = None, ignore_percentile: float = 0.0, ignore_std: float = 0.0) -> pd.DataFrame:
 	correlations = {}
 
+	data = data.copy()
+	data = data[data["split"] == "trainUval"]
 	data_full = ignore_outliers(data, ignore_percentile=ignore_percentile, ignore_std=ignore_std)
 
 	for metric in METRICS:

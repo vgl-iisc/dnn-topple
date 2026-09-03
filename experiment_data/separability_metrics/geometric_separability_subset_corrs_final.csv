@@ -17,3 +17,12 @@ sackin_index_k20,cifar_resnet,v_p,-0.8611400641079043
 average_sackin_index_k20,full,v_p,-0.6162062707786099
 average_sackin_index_k20,cifar_densenet,v_p,-0.6253725472255696
 average_sackin_index_k20,cifar_resnet,v_p,-0.6068808966627838
+total_persistence,full,v_p,-0.553640745820832
+total_persistence,cifar_densenet,v_p,-0.784274527760141
+total_persistence,cifar_resnet,v_p,-0.7797484795425754
+minima,full,v_p,-0.528357721318484
+minima,cifar_densenet,v_p,-0.42040220513702453
+minima,cifar_resnet,v_p,-0.803082094644409
+cps,full,v_p,-0.5356568690960863
+cps,cifar_densenet,v_p,-0.41608251404806407
+cps,cifar_resnet,v_p,-0.8061946621978496

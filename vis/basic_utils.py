@@ -1,4 +1,5 @@
 import os
+import shutil
 import streamlit as st
 import numpy as np
 import torch
@@ -127,16 +128,24 @@ def get_preds(exp) -> list[int]:
         flat = preds_2d[coords[:, 0], coords[:, 1]].numpy()
         flat = np.where(flat < 0, 0, flat).astype(int)
         return flat.tolist()
+    
     # CNN path
     if st.session_state.no_preds:
         return get_labels(exp)
+
     pred_path = exp.get_paths(
         data_dir=st.session_state.landscapes_dir,
         ct_dir=st.session_state.ct_dir,
     )["predictions"]
-    with open(pred_path, "rb") as f:
-        preds = torch.load(f, map_location="cpu").to(dtype=torch.int32).numpy().reshape(-1)
-    return preds.tolist()
+
+    if pred_path.endswith(".txt"):
+        with open(pred_path, "r") as f:
+            preds = [int(line.strip()) for line in f if line.strip()]
+        return preds
+    else:
+        with open(pred_path, "rb") as f:
+            preds = torch.load(f, map_location="cpu").to(dtype=torch.int32).numpy().reshape(-1)
+        return preds.tolist()
 
 @st.cache_resource(hash_funcs=_CACHE_HASH_FUNCS)
 def get_labels(exp) -> list[int]:
@@ -226,3 +235,38 @@ def compute_arc_features(exp, simpl: float):
     # Use C++ implementation for fast computation
     features = ct.computeRichFeatures(topo, -1, simpl, partition, labels, preds, class_sizes)  # type: ignore
     return features
+
+def export_off_for_treevis(exp, simpl: float, output_dir: str | None = None) -> str:
+    """
+    Saves the RichFeature layout (persistence, volume, majority class, homogeneity, ...) for
+    `exp` at simplification `simpl` as a .off file for TreeVis, via LayoutCT's SaveRichLayoutToOFF.
+
+    SaveRichLayoutToOFF always writes next to the ctree's own files (inside ct_dir), so the
+    result is moved to `output_dir` (defaults to the current working directory) afterwards.
+    Returns the final path of the .off file.
+    """
+    if isinstance(exp, BertExperiment) or st.session_state.is_bert:
+        # Ensure BertDataset.class_size_by_split is populated before we read it
+        get_labels(exp)
+
+    ctree_name = exp.get_paths(st.session_state.landscapes_dir, st.session_state.ct_dir)["ctree"]
+
+    partition = get_partition(exp)
+    labels = get_labels(exp)
+    preds = get_preds(exp)
+    class_sizes = [exp.dataset.class_size_by_split[exp.split][cls] for cls in exp.dataset.classes]
+    class_labels = [str(cls) for cls in exp.dataset.classes]
+
+    topk = -1
+    ct.SaveRichLayoutToOFF(ctree_name, topk, simpl, partition, labels, preds, class_sizes, class_labels)  # type: ignore
+
+    generated_path = f"{ctree_name}.off"
+
+    dest_dir = output_dir or os.getcwd()
+    os.makedirs(dest_dir, exist_ok=True)
+    dest_name = f"{exp.model_data}_{exp.split}_{exp.layer_tag}_{exp.epoch_tag}_{exp.k}.off"
+    dest_path = os.path.join(dest_dir, dest_name)
+
+    shutil.move(generated_path, dest_path)
+
+    return dest_path

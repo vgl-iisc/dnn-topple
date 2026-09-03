@@ -1,0 +1,1 @@
+python scripts/compute_knn_complexes.py /home/santripta/data_1/Inference_better/landscape_data_cross_epoch_re /home/santripta/data_1/Inference_better/knns_cross_epoch_re 20 k --metric e --timing_output knn_times_cross_epoch_re.pkl

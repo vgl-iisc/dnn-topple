@@ -120,7 +120,8 @@ def render_coverage_map(id: int):
     def render_data_explorer_exports():
         simpl_value = float(st.session_state.get(f"computed_simpl_{id}", 0.0))
         feature_df, mapping_df = build_data_explorer_exports(exp, features, simpl_value)
-        simpl_tag = f"{simpl_value:.8g}".replace(".", "p").replace("-", "m")
+        valley_count = feature_df[feature_df["Feature Type"] == "minima-saddle"].shape[0]
+        simpl_tag = f"v{valley_count}"
 
         with st.expander("Export all features and point mappings", expanded=False):
             st.caption(f"Exports include all features at simplification={simpl_value:g}.")
@@ -129,7 +130,7 @@ def render_coverage_map(id: int):
                 st.download_button(
                     "Download feature attributes CSV",
                     data=feature_df.to_csv(index=False).encode("utf-8"),
-                    file_name=f"all_features_simpl_{simpl_tag}.csv",
+                    file_name=f"feats_{simpl_tag}_{exp.model}.csv",
                     mime="text/csv",
                     key=f"download_all_features_csv_{id}",
                 )
@@ -137,7 +138,7 @@ def render_coverage_map(id: int):
                 st.download_button(
                     "Download data-point to feature mapping CSV",
                     data=mapping_df.to_csv(index=False).encode("utf-8"),
-                    file_name=f"point_feature_mapping_simpl_{simpl_tag}.csv",
+                    file_name=f"points_{simpl_tag}_{exp.model}.csv",
                     mime="text/csv",
                     key=f"download_point_feature_mapping_csv_{id}",
                 )
@@ -747,8 +748,8 @@ def render_coverage_map(id: int):
 
         with distances:
             with st.container(horizontal=True, vertical_alignment="center"):
-                distance_metric = st.selectbox("Distance Type", options=["Path", "Volume Weighted"])
-                use_weight = distance_metric == "Volume Weighted"
+                distance_metric = st.selectbox("Distance Type", options=["Path", "Volume Weighted", "Persistence"])
+                use_weight = {"Path": None, "Volume Weighted": "volume", "Persistence": "persistence"}[distance_metric]
                 if st.button("Compute Distances", key=f"compute_distances_{id}"):
                     raw_mat_min = np.zeros((len(exp.dataset.classes), len(exp.dataset.classes)), dtype=np.float32)
                     raw_mat_avg = np.zeros((len(exp.dataset.classes), len(exp.dataset.classes)), dtype=np.float32)
@@ -765,7 +766,7 @@ def render_coverage_map(id: int):
                         
                         for s in subcomps_by_class[c1]:
                             src = s["top"]
-                            paths = nx.shortest_path(G, source=src, weight="volume" if use_weight else None)
+                            paths = nx.shortest_path(G, source=src, weight=use_weight)
 
                             for j, c2 in enumerate(exp.dataset.classes[i+1:]):
                                 if c1 == c2:
@@ -773,7 +774,7 @@ def render_coverage_map(id: int):
                                 for s2 in subcomps_by_class[c2]:
                                     tgt = s2["top"]
                                     if tgt in paths:
-                                        length = len(paths[tgt]) - 1 if not use_weight else sum(G[u][v]["volume"] for u, v in zip(paths[tgt][:-1], paths[tgt][1:]))
+                                        length = len(paths[tgt]) - 1 if use_weight is None else sum(G[u][v][use_weight] for u, v in zip(paths[tgt][:-1], paths[tgt][1:]))
                                         
                                         dists_to[j].append(length)
 

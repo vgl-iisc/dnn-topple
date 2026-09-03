@@ -1,0 +1,1 @@
+streamlit run vis/app.py /home/santripta/data_r/strees_random_cifar/ /home/santripta/data_r/landscape_random_cifar/ ./datasets/

@@ -11,8 +11,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 from scripts.get_accuracies import process_file
 from scripts.chart_simplification_valleys import get_valley_vs_thresh
 import scripts.tree_metrics as tm
-import vis.experiment as exp
-import vis.basic_utils as vu
+import experiment as exp
 
 from sklearn.linear_model import LinearRegression
 from lmfit.models import ExponentialModel
@@ -32,11 +31,13 @@ THRESH_SELECTION = 1e-6
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(processName)s - %(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-METRICS = ['total_persistence']
+METRICS = ['total_persistence', 'minima', 'cps']
 
 def compute_correlations(data: pd.DataFrame, out_csv: str | None = None) -> pd.DataFrame:
 	correlations = {}
 
+	data = data.copy()
+	data = data[data["split"] == "trainUval"]
 	data_full = data
 
 	for metric in METRICS:
@@ -113,17 +114,6 @@ def compute_correlations(data: pd.DataFrame, out_csv: str | None = None) -> pd.D
  
 	return corr_df
 
-def get_total_persistence(experiment, thresh, data_dir, ct_dir):
-    ctree_name = experiment.get_paths(data_dir, ct_dir)["ctree"]
-    
-    topo = ct.TopologicalFeatures() # type: ignore
-    topo.loadData(ctree_name)
-    
-    data = topo.ctdata
-    features = [vu.RichFeature(id, f, data) for id, f in enumerate(topo.getPartitionedExtremaFeatures(-1, thresh)[0])]
-    
-    return sum(f.pers for f in features)
-
 def process_experiment(worker_id: int, experiment, data_dir: str, ct_dir: str, thresh_selection) -> dict:
 	"""
 	Worker function to process a single experiment.
@@ -148,7 +138,7 @@ def process_experiment(worker_id: int, experiment, data_dir: str, ct_dir: str, t
 	log.info(f"{worker_id}: Processing experiment: {experiment}")
 
 	try:
-		paths = experiment.get_paths(data_dir, ct_dir)
+		paths = experiment.get_paths()
 		tree_path = paths["ctree"]
 
 		fns, num_min = get_valley_vs_thresh(tree_path)
@@ -169,7 +159,26 @@ def process_experiment(worker_id: int, experiment, data_dir: str, ct_dir: str, t
 				log.info(f"{worker_id}: Desired number of valleys {wanted_num_valleys} not found. Using maximum available: {wanted_num_valleys}")
 			thresh = fns[num_min.index(wanted_num_valleys)]
 		
-		total_pers = get_total_persistence(experiment, thresh, data_dir, ct_dir)
+		ctree_name = experiment.get_paths()["ctree"]
+		
+		topo = ct.TopologicalFeatures() # type: ignore
+		topo.loadData(ctree_name)
+
+		part_path = f"{ctree_name}.part.raw"
+		count = len(experiment.dataset.labels_by_split[experiment.split])
+		with open(part_path, "rb") as f:
+			partition = np.fromfile(f, dtype=np.uint32, count=count).tolist()
+
+		# Match balance_metrics rich-feature extraction path.
+		labels = [0] * len(partition)
+		preds = [0] * len(partition)
+		class_sizes = [100000 for _ in experiment.dataset.classes]
+		features = ct.computeRichFeatures(topo, -1, thresh, partition, labels, preds, class_sizes)  # type: ignore
+
+
+		total_pers = sum(f.pers for f in features)
+		minima = len([f for f in features if f.type_frm == ct.MINIMUM]) # type: ignore
+		cps = len(features)
 
 		accuracy = process_file(paths["compiled_res"], experiment.epoch)
 
@@ -183,6 +192,8 @@ def process_experiment(worker_id: int, experiment, data_dir: str, ct_dir: str, t
 			"thresh": thresh,
 			"thresh_mode": str(thresh_selection),
 			"total_persistence": total_pers,
+			"minima": minima,
+			"cps": cps
 		}
   
 		result["train_acc"] = accuracy.loc[accuracy['Split'] == 'Train', 'accuracy'].values[0] if 'Train' in accuracy['Split'].values else np.nan

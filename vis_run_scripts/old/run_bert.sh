@@ -1,1 +1,1 @@
-streamlit run vis/app.py D:/BERT/ctrees_115_split D:/BERT/landscape_data/bert_ner_conll . +bert +complexes_dir D:/BERT/knn_complexes_115 +conll_dir ./datasets/conll/data/conll2003
+streamlit run vis/app.py ~/data_2/BERT/strees_115 ~/data_2/BERT/landscape_data . +bert +complexes_dir ~/data_2/BERT/knn_complexes_115_nice/ +conll_dir ./datasets/conll/data/conll2003

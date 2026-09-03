@@ -24,7 +24,7 @@ from pyinstrument import Profiler
 import argparse as ap
 
 from experiment import Dataset, LossLandscapeExperiment, find_all_datasets, find_all_experiments, BertExperiment, find_all_bert_experiments
-from basic_utils import get_filtered_cps_vs_thresh, get_order_and_weights, get_tree, get_labels, get_preds, get_partition, compute_arc_features, get_valley_vs_thresh
+from basic_utils import get_filtered_cps_vs_thresh, get_order_and_weights, get_tree, get_labels, get_preds, get_partition, compute_arc_features, get_valley_vs_thresh, export_off_for_treevis
 from tree_explorer import render_tree_explorer
 from coverage_view import render_coverage_map
 from components import render_experiment_selector
@@ -131,11 +131,15 @@ def render_experiment(id: int, half_width: bool):
         valley_simpl_chart(exp)
     
     simpl_key = f"simpl_thresh_{id}"
-    simpl = st.number_input("Simplification Threshold", value=0.0, max_value=500.0, step=0.0001, key=simpl_key, format="%0.32f")
+    simpl = st.number_input("Simplification Threshold", value=0.0, max_value=1000000.0, step=0.0001, key=simpl_key, format="%0.32f")
 
     with st.container(horizontal=True, horizontal_alignment="center") as c:
         if st.button("Compute Tree and Coverage", key=f"compute_button_{id}"):
             compute_arcs_and_coverage(id, simpl)
+        if st.button("Save OFF for TreeVis", key=f"export_off_button_{id}"):
+            with st.spinner(f"Saving OFF file at simplification {simpl}..."):
+                off_path = export_off_for_treevis(exp, simpl)
+            st.success(f"Saved to {off_path}")
 
     @st.fragment
     def main_body():

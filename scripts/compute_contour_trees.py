@@ -106,7 +106,7 @@ def l2_layer_candidates(layer_tag):
 
 def main():
     if len(argv) < 5:
-        print("Usage: python compute_contour_trees.py <data_dir> <complexes_dir> <ct_dir> <type: c | s | j (contour, split, or join)> [scalar-field: Losses | GradNorm | GradImp | Entropy | Margin | L2]")
+        print("Usage: python compute_contour_trees.py <data_dir> <complexes_dir> <ct_dir> <type: c | s | j (contour, split, or join)> [scalar-field: Losses | GradNorm | GradImp | Entropy | Margin | L2] [simplification-type: pers | vol]")
         return
     
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(processName)s - %(levelname)s: %(message)s')
@@ -117,6 +117,7 @@ def main():
     ctrees_dir = argv[3].rstrip("\\/")
     ct_type = argv[4].strip().lower()
     scalar_field = argv[5].strip() if len(argv) > 5 else "Losses"
+    sim_type = argv[6].strip().lower() if len(argv) > 6 else "pers"
     scalar_spec = get_scalar_field_spec(scalar_field)
 
     if ct_type not in ["c", "s", "j"]:
@@ -124,6 +125,9 @@ def main():
         return
     if scalar_spec is None:
         print("Error: scalar_field must be one of 'Losses', 'GradNorm', 'GradImp', 'GradImportance', 'Entropy', 'Margin', or 'L2'")
+        return
+    if sim_type not in ["pers", "vol"]:
+        print("Error: simplification-type must be one of 'pers' or 'vol'")
         return
 
     tree_type = {
@@ -172,6 +176,17 @@ def main():
             for g in complexes:
                 scalar_file = os.path.join(root, f)
                 complex_file = os.path.join(complex_root, g)
+
+                out_file_name = os.path.basename(complex_file).replace("adj_", "ctree_").replace("_connected", "")
+                out_file_name, _ = os.path.splitext(out_file_name)
+
+                out_file_name += ".rg.dat"
+                outfile = os.path.join(output_root, out_file_name)
+
+                if os.path.exists(outfile):
+                    logging.info(f"Skipping existing output file: {outfile}")
+                    continue
+
                 all_tasks.append((complex_file, scalar_file, output_root))
     
     if len(all_tasks) == 0:
@@ -185,7 +200,7 @@ def main():
     for i in range(N_workers):
         worker_tasks = all_tasks[i::N_workers]
         if len(worker_tasks) > 0:
-            task_groups.append((i, worker_tasks, tree_type))
+            task_groups.append((i, worker_tasks, tree_type, sim_type))
     
     logging.info(f"Starting processing: {len(all_tasks)} total tasks across {len(task_groups)} workers")
     logging.info(f"Tasks per worker: {[len(group[1]) for group in task_groups]}")

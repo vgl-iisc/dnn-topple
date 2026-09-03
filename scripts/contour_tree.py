@@ -49,7 +49,7 @@ tree_type_name = {
     ct.TreeType.TypeJoinTree: "join_tree"
 }
 
-def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output_directory: str, tree_type: ct.TreeType = ct.TreeType.TypeContourTree, worker_id: int = 0):
+def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output_directory: str, tree_type: ct.TreeType = ct.TreeType.TypeContourTree, sim_type="pers", worker_id: int = 0):
     """
     Compute and save contour tree for a single graph-scalar pair.
     
@@ -93,7 +93,14 @@ def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output
         sim = ct.SimplifyCT()
         sim.setInput(ctdata)
 
-        sim_fn = ct.Persistence(ctdata)
+        if sim_type == "pers":
+            sim_fn = ct.Persistence(ctdata)
+        elif sim_type == "vol":
+            part_file = os.path.join(output_directory, f"{name}.part.raw")
+            sim_fn = ct.Volume(ctdata, part_file)
+            print(f"{worker_id}: Using volume simplification with partition file {part_file}")
+        else:
+            raise ValueError(f"Unknown simplification type: {sim_type}")
 
         sim.simplify(sim_fn)
         sim.outputOrder(outfile, False)
@@ -101,7 +108,7 @@ def compute_and_save_contour_tree(adjlist_file: str, scalar_fn_file: str, output
     except Exception as e:
         log.error(f"{worker_id}: Error during simplification: {e}")
 
-def process_contour_trees(worker_id: int, tasks: list, tree_type: ct.TreeType):
+def process_contour_trees(worker_id: int, tasks: list, tree_type: ct.TreeType, sim_type: str = "pers"):
     """
     Worker function to process a batch of contour tree computations.
     
@@ -118,7 +125,7 @@ def process_contour_trees(worker_id: int, tasks: list, tree_type: ct.TreeType):
     
     for adjlist_file, scalar_fn_file, output_directory in tasks:
         try:
-            compute_and_save_contour_tree(adjlist_file, scalar_fn_file, output_directory, tree_type, worker_id)
+            compute_and_save_contour_tree(adjlist_file, scalar_fn_file, output_directory, tree_type, sim_type, worker_id)
         except Exception as e:
             log.error(f"{worker_id}: Error processing {adjlist_file} with {scalar_fn_file}: {e}")
     
